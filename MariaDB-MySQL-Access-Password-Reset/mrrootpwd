@@ -1,11 +1,20 @@
 #!/bin/bash
 
-# GLobal variables
+# mrrootpwd : MariaDB/MySQL Root Password Reset
+#
+# This script require administrative privilege
+#
+# Usage     : sudo bash mrrootpwd [new_root_pwd]
+# Example   : sudo bash mrrootpwd sTr0n9p45sw0Rd
+#
+# (c) 2023. David Eleazar
+
+# Global variables
 MY_CNF_DIR=/etc/my.cnf.d
 MARIADB_CNF_FILE=${MY_CNF_DIR}/mariadb-server.cnf
 MAIN_CONFIG=/etc/my.cnf
 
-# Unicode colors
+# ANSI colors
 NC='\033[0m'
 BLACK='\033[0;30m'
 RED='\033[0;31m'
@@ -24,7 +33,11 @@ LPURPLE='\033[1;35m'
 LCYAN='\033[1;36m'
 WHITE='\033[1;37m'
 
-function load_unsecure_config () {
+function version {
+  echo "$@" | awk -F. '{ printf("%d%03d%03d%03d\n", $1,$2,$3,$4); }';
+}
+
+function load_unsecure_config {
   if [ -d "$MY_CNF_DIR" ] 
   then
     echo "Directory $MY_CNF_DIR exists."
@@ -42,7 +55,7 @@ function load_unsecure_config () {
   fi
 }
 
-function check_restore_secure_config () {
+function check_restore_secure_config {
   if [ -d "$MY_CNF_DIR" ] 
   then
     echo "Directory $MY_CNF_DIR exists."
@@ -67,65 +80,78 @@ function check_restore_secure_config () {
   fi
 }
 
-function begin_unsecure_service() {
+function begin_unsecure_service {
   systemctl stop $1
   check_restore_secure_config
   load_unsecure_config
   systemctl start $1
 }
 
-function end_unsecure_service() {
+function end_unsecure_service {
   systemctl stop $1
   check_restore_secure_config
   systemctl start $1
 }
 
-function get_pwd_reset_query() {
-  local MODE=$1
-  local PASSWORD=$2
+function get_pwd_reset_query {
+  local DB=$1
+  local VERSION=$2
+  local PASSWORD=$3
 
-  if [ "$MODE" == "alter_unix" ]
+  if [ "$DB" == "MariaDB" ]
   then
-    # This mode works on MariaDB 10.4+, which by default using dual authentication plugins:
-    # 'mysql_native_password' and 'unix_socket'
-    echo 'ALTER USER `root`@`localhost` IDENTIFIED VIA mysql_native_password USING PASSWORD("'$PASSWORD'") OR unix_socket;'
-  elif [ "$MODE" == "alter_pwd_only" ]
-  then
-    # This mode works on MySQL 5.7+ and MariaDB 10.2+, because ALTER USER is still a new feature on those DB versions
-    echo 'ALTER USER `root`@`localhost` IDENTIFIED VIA mysql_native_password USING PASSWORD("'$PASSWORD'");'
-  else
-    # This mode works on all (?) version of MariaDB and MySQL
+    # Dealing with MariaDB database
     echo 'SET PASSWORD FOR `root`@`localhost` = PASSWORD("'$PASSWORD'");'
+  else
+    # Dealing with MySQL database
+    if [ $(version "$VERSION") -lt $(version "5.7") ]; then
+      # This query works on old MySQL (< 5.7)
+      echo 'SET PASSWORD FOR `root`@`localhost` = PASSWORD("'$PASSWORD'");'
+    else
+      # This query works on newer MySQL (5.7 +)
+      echo 'ALTER USER `root`@`localhost` IDENTIFIED BY "'$PASSWORD'";'
+    fi
   fi
 }
 
-function reset_password() {
+function reset_password {
   local SERVICE_NAME=$1
-  local DB_NAME=$2
+  local DB=$(echo $2 | awk -F':' '{print $1}')
+  local VERSION=$(echo $2 | awk -F':' '{print $2}')
   local PASSWORD=$3
 
   begin_unsecure_service $SERVICE_NAME
 
-  ALTER_QUERY=$(get_pwd_reset_query 'set_pwd' $PASSWORD)
+  ALTER_QUERY=$(get_pwd_reset_query $DB $VERSION $PASSWORD)
   FLUSH_QUERY='FLUSH PRIVILEGES;'
   SQL="${FLUSH_QUERY} ${ALTER_QUERY} ${FLUSH_QUERY}"
 
-  echo -e "Resetting ${CYAN}${DB_NAME}${NC} root password . . ."
-  mysql -e "$SQL"
-  echo -e "Done reset password! Your new root password is : ${GREEN}${PASSWORD}${NC}"
+  # For debugging only
+  echo $SQL
+
+  echo -e "Resetting ${CYAN}${DB}${NC} root password . . ."
+  RESULT=$(mysql -e "$SQL" 2>&1)
+
+  if [ "$RESULT" == "" ]
+  then
+    echo -e "Done reset password! Your new root password is : ${GREEN}${PASSWORD}${NC}"
+  else
+    echo -e "${LRED}Failed to change root password. Please try again.${NC}"
+  fi
 
   end_unsecure_service $SERVICE_NAME
 }
 
 # Main function execution
 if [ "$1" == "" ]; then
-  echo "Usage: bash mrpwd [new_root_pwd]"
+  echo "Usage: sudo bash mrrootpwd [new_root_pwd]"
   echo "_____"
   echo "ERROR: You must supply a strong, unique password as an argument."
 else
   SERVICE_NAME=$(systemctl list-units --type=service --all | grep -E 'MySQL|MariaDB' | awk -F' ' '{print $1}' | awk -F'.' '{print $1}')
   IS_MARIADB=$(mysql --version | grep MariaDB)
-  VERSION_NUMBER=$(mysql --version | awk -F'-' '{print $1}' | awk '{print $5}')
+  VERSION_NUMBER=$(mysql --version | perl -pe '($_)=/([0-9]+([.][0-9]+)+([.][0-9]+)+)/')
+  NEW_ROOT_PWD=$1
 
   if [ "$IS_MARIADB" != "" ]; then
     DB=MariaDB
@@ -133,6 +159,6 @@ else
     DB=MySQL
   fi
 
-  echo -e "Your ${CYAN}${DB}${NC} version is ${LPURPLE}${VERSION_NUMBER}${NC}"
-  reset_password $SERVICE_NAME $DB $1
+  echo -e "Your ${CYAN}${DB}${NC} version is ${YELLOW}${VERSION_NUMBER}${NC}"
+  reset_password $SERVICE_NAME "${DB}:${VERSION_NUMBER}" $NEW_ROOT_PWD
 fi
