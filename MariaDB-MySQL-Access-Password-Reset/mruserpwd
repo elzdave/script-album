@@ -63,7 +63,7 @@ function reset_user_password() {
   SQL="${FLUSH_QUERY} ${ALTER_QUERY} ${FLUSH_QUERY}"
 
   # For debugging only
-  echo $SQL
+  # echo $SQL
 
   echo -e "Resetting ${CYAN}${DB}${NC} ${YELLOW}${USERNAME}${NC}'s password . . ."
   RESULT=$(mysql -u root -p$ROOT_PASSWORD -e "$SQL" 2>&1)
