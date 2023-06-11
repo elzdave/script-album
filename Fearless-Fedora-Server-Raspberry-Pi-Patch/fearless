@@ -1,0 +1,234 @@
+#!/bin/bash
+
+# Fearless : Fedora Server on Raspberry Pi Headless patch
+#
+# A simple post-flash script to configure:
+# 1. WiFi
+# 2. Username and password
+# 3. Resize SD card space to use all available free space
+# 4. Disable initial Fedora setup
+# 5. SSH key creation
+#
+# Usage   : ./fearless /path/to/sdcard/disk
+# Example : ./fearless /dev/sdb
+#
+# (c) 2021-2023. David Eleazar
+
+# The target SD card
+SDCARD=$1
+
+# This computer's SSH key
+SSH_PUB_KEY=$(cat $HOME/.ssh/id_rsa.pub)
+
+# The logical volume mount point
+MOUNTPOINT=/mnt/fdroot
+
+# The target machine's hostname
+HOSTNAME=RPiFedora
+
+# Fedora volume group name
+VOLGROUP=$(sudo pvdisplay ${SDCARD}3 -m | grep VG | awk -F" " '{print $3}')
+
+# Enable Wi-Fi flag
+ENABLE_WIFI=1
+
+echo "Enable Wi-Fi?"
+select opts in "Yes" "No"; do
+    case $opts in
+        Yes ) ENABLE_WIFI=1; break;;
+        No ) ENABLE_WIFI=0; break;;
+    esac
+done
+
+if [ $ENABLE_WIFI -eq  1 ]
+then
+  read -p "Enter Wi-Fi SSID name : " WIFI_NAME
+  read -s -p "Enter Wi-Fi password : " WIFI_PASSWORD
+fi
+
+# Generate Raspberry Pi SSH key
+if [ ! -d ".ssh" ]
+then
+  echo "Creating SSH keys . . ."
+  mkdir .ssh
+  ssh-keygen -t ed25519 -f .ssh/id_ed25519 -q -N "" -C "$HOSTNAME"
+fi
+
+RPI_SSH_PRIV_KEY=$(cat $(pwd)/.ssh/id_ed25519 || echo '')
+RPI_SSH_PUB_KEY=$(cat $(pwd)/.ssh/id_ed25519.pub || echo '')
+
+# Install required package
+echo "Installing dependencies . . ."
+sudo dnf install lvm2 qemu-user-static -y
+sudo systemctl restart systemd-binfmt
+
+# Activate the LVM volume group
+echo "Activate volume group . . ."
+sudo vgchange -ay $VOLGROUP
+
+# Enable LVM module
+echo "Enable LVM module . . ."
+sudo modprobe dm-mod
+
+if [ ! -d "$MOUNTPOINT" ]
+then
+  echo "Creating mount folder . . ."
+  sudo mkdir $MOUNTPOINT
+fi
+
+echo "Mounting the LVM . . ."
+if [ "$(mount | grep $MOUNTPOINT)" != "" ]
+then
+    sudo umount $MOUNTPOINT
+    sudo vgchange -an $VOLGROUP
+fi
+sudo mount /dev/$VOLGROUP/root $MOUNTPOINT
+
+# Resize disk
+# enlarge the 3rd partition to 100%
+sudo parted -s $SDCARD resizepart 3 '100%'
+sudo pvresize ${SDCARD}3
+
+# extend the root filesystem to take up the space just added to the volume that it is in
+sudo lvextend -l +100%FREE /dev/$VOLGROUP/root
+
+# resize root partition for the server image (which uses xfs)
+sudo xfs_growfs -d $MOUNTPOINT
+
+# Make Wi-Fi service and shell file to setup Wi-Fi on the next boot
+SERVICE_FILE=/etc/systemd/system/wifi.service
+WIFI_SHELL_FILE=/usr/local/bin/wifi
+
+read -r -d '' WIFI_SHELL << EOF
+#!/bin/bash
+SCRIPT_PATH="\${BASH_SOURCE}"
+while [ -L "\${SCRIPT_PATH}" ]; do
+  TARGET="$(readlink "\${SCRIPT_PATH}")"
+  if [[ "\${TARGET}" == /* ]]; then
+    SCRIPT_PATH="\$TARGET"
+  else
+    SCRIPT_PATH="$(dirname "\${SCRIPT_PATH}")/\${TARGET}"
+  fi
+done
+
+echo "Adding Wi-Fi connection . . ."
+nmcli device wifi connect "${WIFI_NAME}" password "${WIFI_PASSWORD}"
+systemctl disable wifi.service
+rm /etc/systemd/system/wifi.service
+rm \$SCRIPT_PATH
+exit 0
+EOF
+
+read -r -d '' SERVICE << EOF
+[Unit]
+Description=Connect to defined Wi-Fi network.
+Require=NetworkManager.service
+After=multi-user.target NetworkManager.service
+
+[Service] 
+Type=oneshot 
+ExecStart=/bin/bash ${WIFI_SHELL_FILE}
+
+[Install] 
+WantedBy=multi-user.target 
+EOF
+
+# Make another script to run inside chroot environment
+cat > ./mod.sh << EOF
+  #!/bin/bash
+  # Check whether the current user is root
+  if [ \$(id -u) -eq 0 ]; then
+    read -p "Enter username : " USERNAME
+    read -s -p "Enter password : " PASSWORD
+    grep -E "^\$USERNAME" /etc/passwd >/dev/null
+    if [ \$? -eq 0 ]; then
+      echo "\$USERNAME exists!"
+    else
+      pass=\$(perl -e 'print crypt(\$ARGV[0], "fedora")' \$PASSWORD)
+      groupadd "\$USERNAME"
+      useradd -m -p "\$pass" -g "\$USERNAME" -G wheel -u 1000 "\$USERNAME"
+      [ \$? -eq 0 ] && echo "User has been added to system!" || echo "Failed to add a user!"
+    fi
+  else
+    echo "Only root may add a user to the system."
+  fi
+
+  if [ $ENABLE_WIFI -eq  1 ]
+  then
+    echo "Copying Wi-Fi setup script . . ."
+    echo '${WIFI_SHELL}' > $WIFI_SHELL_FILE
+
+    # Set Wi-Fi script owner and permission
+    echo "Set Wi-Fi script owner and permission . . ."
+    chown root:root $WIFI_SHELL_FILE
+    chmod 744 $WIFI_SHELL_FILE
+
+    # Add the service to run the Wi-Fi script on the next boot
+    echo "Copying Wi-Fi setup service unit . . ."
+    echo '${SERVICE}' > $SERVICE_FILE
+
+    # Set Wi-Fi service owner and permission
+    echo "Set Wi-Fi service unit owner and permission . . ."
+    chown root:root $SERVICE_FILE
+    chmod 644 $SERVICE_FILE
+
+    # Enable Wi-Fi service
+    echo "Registering Wi-Fi service . . ."
+    ln -s /etc/systemd/system/wifi.service /etc/systemd/system/multi-user.target.wants/wifi.service
+  fi
+
+  # Set DNF to use fastest mirror
+  echo "Enable fastest DNF mirror..."
+  echo 'fastestmirror=True' >> /etc/dnf/dnf.conf
+  echo 'deltarpm=True' >> /etc/dnf/dnf.conf
+  
+  # Configure SSH
+  if [ ! -d "/home/\$USERNAME/.ssh" ]
+  then
+    # Adding this computer's public SSH key to target image
+    echo "Adding this computer's public SSH key to the target image . . ."
+    mkdir /home/\$USERNAME/.ssh
+    chmod 700 /home/\$USERNAME/.ssh
+    touch /home/\$USERNAME/.ssh/authorized_keys
+    echo '${SSH_PUB_KEY}' > /home/\$USERNAME/.ssh/authorized_keys
+    chmod 600 /home/\$USERNAME/.ssh/authorized_keys
+
+    # Copying generated Raspberry Pi 4 SSH key
+    echo "Copying SSH key . . ."
+    echo '${RPI_SSH_PRIV_KEY}' > /home/\$USERNAME/.ssh/id_ed25519
+    echo '${RPI_SSH_PUB_KEY}' > /home/\$USERNAME/.ssh/id_ed25519.pub
+
+    # Set key permission and owner
+    echo "Setting SSH key permission and owner . . ."
+    chmod 600 /home/\$USERNAME/.ssh/id_ed25519
+    chmod 644 /home/\$USERNAME/.ssh/id_ed25519.pub
+    chown -R \$USERNAME:\$USERNAME /home/\$USERNAME/.ssh
+  fi
+
+  # Set Hostname
+  echo  "Setting target hostname to ${HOSTNAME} . . ."
+  echo '$HOSTNAME' > /etc/hostname
+
+  # Disable initial setup
+  echo "Disabling initial Fedora setup . . ."
+  rm /etc/systemd/system/multi-user.target.wants/initial-setup.service
+  rm /etc/systemd/system/graphical.target.wants/initial-setup.service
+  read -p "Press any key to continue . . ."
+  exit 0
+EOF
+
+echo "Execute main script . . ."
+sudo mv ./mod.sh $MOUNTPOINT
+sudo chmod +x $MOUNTPOINT/mod.sh
+sudo chroot $MOUNTPOINT /bin/bash ./mod.sh
+
+# Cleanup
+echo "File cleanup . . ."
+sudo rm -rf $MOUNTPOINT/mod.sh
+sudo umount $MOUNTPOINT
+sudo rm -rf $MOUNTPOINT
+sudo vgchange -an $VOLGROUP
+sudo rm -rf .ssh
+
+echo "Done !"
+exit

@@ -31,14 +31,14 @@ function load_unsecure_config () {
     if [ -f "$MARIADB_CNF_FILE" ]
     then
       echo "Backuping $MARIADB_CNF_FILE as $MARIADB_CNF_FILE.bak . . ."
-      sudo cp -p $MARIADB_CNF_FILE $MARIADB_CNF_FILE.bak
-      sudo sed -i '/\[mysqld\]/a skip-grant-tables\nskip-networking' $MARIADB_CNF_FILE
+      cp -p $MARIADB_CNF_FILE $MARIADB_CNF_FILE.bak
+      sed -i '/\[mysqld\]/a skip-grant-tables\nskip-networking' $MARIADB_CNF_FILE
     fi 
   else
     echo "Directory $MY_CNF_DIR does not exists. Will edit main $MAIN_CONFIG config."
     echo "Backuping $MAIN_CONFIG as $MAIN_CONFIG.bak . . ."
-    sudo cp -p $MAIN_CONFIG $MAIN_CONFIG.bak
-    sudo sed -i '/\[mysqld\]/a skip-grant-tables\nskip-networking' $MAIN_CONFIG
+    cp -p $MAIN_CONFIG $MAIN_CONFIG.bak
+    sed -i '/\[mysqld\]/a skip-grant-tables\nskip-networking' $MAIN_CONFIG
   fi
 }
 
@@ -49,8 +49,8 @@ function check_restore_secure_config () {
     if [ -f "$MARIADB_CNF_FILE.bak" ]
     then
       echo "Restoring original $MARIADB_CNF_FILE . . ."
-      sudo cp -p $MARIADB_CNF_FILE.bak $MARIADB_CNF_FILE
-      sudo rm $MARIADB_CNF_FILE.bak
+      cp -p $MARIADB_CNF_FILE.bak $MARIADB_CNF_FILE
+      rm $MARIADB_CNF_FILE.bak
     else
       echo "No backup found."
     fi
@@ -59,8 +59,8 @@ function check_restore_secure_config () {
     if [ -f "$MAIN_CONFIG.bak" ]
     then
       echo "Restoring original $MAIN_CONFIG . . ."
-      sudo cp -p $MAIN_CONFIG.bak $MAIN_CONFIG
-      sudo rm $MAIN_CONFIG.bak
+      cp -p $MAIN_CONFIG.bak $MAIN_CONFIG
+      rm $MAIN_CONFIG.bak
     else
       echo "No backup found."
     fi
@@ -68,16 +68,16 @@ function check_restore_secure_config () {
 }
 
 function begin_unsecure_service() {
-  sudo systemctl stop $1
+  systemctl stop $1
   check_restore_secure_config
   load_unsecure_config
-  sudo systemctl start $1
+  systemctl start $1
 }
 
 function end_unsecure_service() {
-  sudo systemctl stop $1
+  systemctl stop $1
   check_restore_secure_config
-  sudo systemctl start $1
+  systemctl start $1
 }
 
 function get_pwd_reset_query() {
@@ -119,7 +119,7 @@ function reset_password() {
 
 # Main function execution
 if [ "$1" == "" ]; then
-  echo "Usage: mrpwd.sh [new_root_pwd]"
+  echo "Usage: bash mrpwd [new_root_pwd]"
   echo "_____"
   echo "ERROR: You must supply a strong, unique password as an argument."
 else

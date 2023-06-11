@@ -5,6 +5,7 @@
 ### Table of Contents
 
 1. [MariaDB/MySQL Root Password Reset Script](MariaDB-MySQL-Root-Password-Reset)
+2. [Fearless: Fedora Server Raspberry Pi Patch](Fearless-Fedora-Server-Raspberry-Pi-Patch)
 
 ### Contribution
 
