@@ -130,7 +130,7 @@ function reset_password {
   # echo $SQL
 
   echo -e "Resetting ${CYAN}${DB}${NC} root password . . ."
-  RESULT=$(mysql -e "$SQL" 2>&1)
+  RESULT=$(mysql -e "$SQL" 2>&1 | grep ERROR)
 
   if [ "$RESULT" == "" ]
   then

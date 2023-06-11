@@ -66,7 +66,7 @@ function reset_user_password() {
   # echo $SQL
 
   echo -e "Resetting ${CYAN}${DB}${NC} ${YELLOW}${USERNAME}${NC}'s password . . ."
-  RESULT=$(mysql -u root -p$ROOT_PASSWORD -e "$SQL" 2>&1)
+  RESULT=$(mysql -u root -p$ROOT_PASSWORD -e "$SQL" 2>&1 | grep ERROR)
 
   if [ "$RESULT" == "" ]
   then
