@@ -93,25 +93,55 @@ function end_unsecure_service {
   systemctl start $1
 }
 
-function get_pwd_reset_query {
+function get_update_plugin_query {
+  local USER=$1
+  local PLUGIN=$2
+
+  echo 'UPDATE `mysql`.`user` SET `plugin` = "'$PLUGIN'" WHERE `user`="root";'
+}
+
+function build_pwd_reset_query {
   local DB=$1
   local VERSION=$2
   local PASSWORD=$3
 
-  if [ "$DB" == "MariaDB" ]
-  then
+  local FLUSH_QUERY='FLUSH PRIVILEGES;'
+
+  if [ "$DB" == "MariaDB" ]; then
     # Dealing with MariaDB database
-    echo 'SET PASSWORD FOR `root`@`localhost` = PASSWORD("'$PASSWORD'");'
+    if [ $(version "$VERSION") -lt $(version "10.2") ]; then
+      # This query works on MariaDB prior to 10.2
+      # Warning: this reset query involved low level hacks
+      local CLEAR=$(get_update_plugin_query root)
+      local RESET_PWD='UPDATE `mysql`.`user` SET `password` = PASSWORD("'$PASSWORD'") WHERE `user`="root";'
+      local RESTORE=$(get_update_plugin_query root mysql_native_password)
+      local BUILT_QUERY="${FLUSH_QUERY} ${CLEAR} ${FLUSH_QUERY} ${RESET_PWD} ${FLUSH_QUERY} ${RESTORE} ${FLUSH_QUERY}"
+    elif [[ $(version "$VERSION") -ge $(version "10.2") && $(version "$VERSION") -lt $(version "10.4") ]]; then
+      # This query works on MariaDB 10.2+
+      local RESET_PWD='ALTER USER `root`@`localhost` IDENTIFIED BY "'$PASSWORD'";'
+      local BUILT_QUERY="${FLUSH_QUERY} ${RESET_PWD} ${FLUSH_QUERY}"
+    else
+      # This mode works on MariaDB 10.4+, which by default using dual authentication plugins:
+      # 'mysql_native_password' and 'unix_socket'
+      # This method is preferred method for modern MariaDB 10.4+ installations
+      local RESET_PWD='ALTER USER `root`@`localhost` IDENTIFIED VIA mysql_native_password USING PASSWORD("'$PASSWORD'") OR unix_socket;'
+      local BUILT_QUERY="${FLUSH_QUERY} ${RESET_PWD} ${FLUSH_QUERY}"
+    fi
   else
     # Dealing with MySQL database
     if [ $(version "$VERSION") -lt $(version "5.7") ]; then
-      # This query works on old MySQL (< 5.7)
-      echo 'SET PASSWORD FOR `root`@`localhost` = PASSWORD("'$PASSWORD'");'
+      # This query works on old MySQL (<5.7)
+      local RESET_PWD='SET PASSWORD FOR `root`@`localhost` = PASSWORD("'$PASSWORD'");'
+      local BUILT_QUERY="${FLUSH_QUERY} ${RESET_PWD} ${FLUSH_QUERY}"
     else
-      # This query works on newer MySQL (5.7 +)
-      echo 'ALTER USER `root`@`localhost` IDENTIFIED BY "'$PASSWORD'";'
+      # This query works on newer MySQL (5.7+)
+      local RESET_PWD='ALTER USER `root`@`localhost` IDENTIFIED BY "'$PASSWORD'";'
+      local BUILT_QUERY="${FLUSH_QUERY} ${RESET_PWD} ${FLUSH_QUERY}"
     fi
   fi
+
+  # Return the result
+  echo $BUILT_QUERY
 }
 
 function reset_password {
@@ -122,15 +152,17 @@ function reset_password {
 
   begin_unsecure_service $SERVICE_NAME
 
-  ALTER_QUERY=$(get_pwd_reset_query $DB $VERSION $PASSWORD)
-  FLUSH_QUERY='FLUSH PRIVILEGES;'
-  SQL="${FLUSH_QUERY} ${ALTER_QUERY} ${FLUSH_QUERY}"
+  local QUERY=$(build_pwd_reset_query $DB $VERSION $PASSWORD)
 
   # For debugging only
-  # echo $SQL
+  # echo $QUERY
 
   echo -e "Resetting ${CYAN}${DB}${NC} root password . . ."
-  RESULT=$(mysql -e "$SQL" 2>&1 | grep ERROR)
+  local RESULT=$(mysql -e "$QUERY" 2>&1 | grep ERROR)
+
+  # For debugging only
+  # echo $RESULT
+  # read -p "Press any key to continue . . ."
 
   if [ "$RESULT" == "" ]
   then
