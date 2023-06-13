@@ -1,4 +1,4 @@
-# MariaDB/MySQL Access Password Reset Script
+# MariaDB/MySQL Root and Regular User Password Reset Script
 
 This folder contains 2 scripts that serve different purposes:
 
