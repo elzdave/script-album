@@ -174,11 +174,19 @@ function reset_password {
   end_unsecure_service $SERVICE_NAME
 }
 
-# Main function execution
+# --- Main function execution ---
+
+# Check for root privileges
+if [ "$(id -u)" != "0" ];then
+  echo -e "${LRED}Root access denied. Please run as root.${NC}"
+  exit 1
+fi
+
 if [ "$1" == "" ]; then
   echo "Usage: sudo bash mrrootpwd [new_root_pwd]"
   echo "_____"
-  echo "ERROR: You must supply a strong, unique password as an argument."
+  echo -e "${LRED}ERROR: You must supply a strong, unique password as an argument.${NC}"
+  exit 2
 else
   SERVICE_NAME=$(systemctl list-units --type=service --all | grep -E 'MySQL|MariaDB' | awk -F' ' '{print $1}' | awk -F'.' '{print $1}')
   IS_MARIADB=$(mysql --version | grep MariaDB)
@@ -193,4 +201,5 @@ else
 
   echo -e "Your ${CYAN}${DB}${NC} version is ${YELLOW}${VERSION_NUMBER}${NC}"
   reset_password $SERVICE_NAME "${DB}:${VERSION_NUMBER}" $NEW_ROOT_PWD
+  exit 0
 fi

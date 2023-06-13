@@ -2,23 +2,62 @@
 
 # Fearless : Fedora Server on Raspberry Pi Headless patch
 #
+# This script require administrative privilege
+#
 # A simple post-flash script to configure:
 # 1. WiFi
 # 2. Username and password
 # 3. Resize SD card space to use all available free space
 # 4. Disable initial Fedora setup
-# 5. SSH key creation
+# 5. SSH key creation and add current host user's public key to 'authorized_keys'
 #
-# Usage   : ./fearless /path/to/sdcard/disk
-# Example : ./fearless /dev/sdb
+# Usage   : sudo bash fearless /path/to/sdcard/disk
+# Example : sudo bash fearless /dev/sdb
 #
 # (c) 2021-2023. David Eleazar
 
-# The target SD card
-SDCARD=$1
+# ANSI colors
+NC='\033[0m'
+BLACK='\033[0;30m'
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+BROWN='\033[0;33m'
+BLUE='\033[0;34m'
+PURPLE='\033[0;35m'
+CYAN='\033[0;36m'
+LGRAY='\033[0;37m'
+DGRAY='\033[1;30m'
+LRED='\033[1;31m'
+LGREEN='\033[1;32m'
+YELLOW='\033[1;33m'
+LBLUE='\033[1;34m'
+LPURPLE='\033[1;35m'
+LCYAN='\033[1;36m'
+WHITE='\033[1;37m'
+
+# Check for root privileges
+if [ "$(id -u)" != "0" ];then
+  echo -e "${LRED}Root access denied. Please run as root.${NC}"
+  exit 1
+fi
+
+# Check for SD card path in argument
+if [ "$1" == "" ]; then
+  echo "Usage: sudo bash fearless /path/to/sdcard/disk"
+  echo "_____"
+  echo -e "${LRED}ERROR: You must supply an absolute path to SD card disk as an argument.${NC}"
+  exit 2
+else
+  # The target SD card
+  SDCARD=$1
+
+  # Get current user
+  CURR_USER=$(logname)
+  CURR_USER_HOME=$(getent passwd "$CURR_USER" | cut -d: -f6)
+fi
 
 # This computer's SSH key
-SSH_PUB_KEY=$(cat $HOME/.ssh/id_rsa.pub)
+SSH_PUB_KEY=$(cat $CURR_USER_HOME/.ssh/id_rsa.pub)
 
 # The logical volume mount point
 MOUNTPOINT=/mnt/fdroot
@@ -27,7 +66,7 @@ MOUNTPOINT=/mnt/fdroot
 HOSTNAME=RPiFedora
 
 # Fedora volume group name
-VOLGROUP=$(sudo pvdisplay ${SDCARD}3 -m | grep VG | awk -F" " '{print $3}')
+VOLGROUP=$(pvdisplay ${SDCARD}3 -m | grep VG | awk -F" " '{print $3}')
 
 # Enable Wi-Fi flag
 ENABLE_WIFI=1
@@ -44,6 +83,7 @@ if [ $ENABLE_WIFI -eq  1 ]
 then
   read -p "Enter Wi-Fi SSID name : " WIFI_NAME
   read -s -p "Enter Wi-Fi password : " WIFI_PASSWORD
+  echo
 fi
 
 # Generate Raspberry Pi SSH key
@@ -59,41 +99,41 @@ RPI_SSH_PUB_KEY=$(cat $(pwd)/.ssh/id_ed25519.pub || echo '')
 
 # Install required package
 echo "Installing dependencies . . ."
-sudo dnf install lvm2 qemu-user-static -y
-sudo systemctl restart systemd-binfmt
+dnf install lvm2 qemu-user-static -y
+systemctl restart systemd-binfmt
 
 # Activate the LVM volume group
 echo "Activate volume group . . ."
-sudo vgchange -ay $VOLGROUP
+vgchange -ay $VOLGROUP
 
 # Enable LVM module
 echo "Enable LVM module . . ."
-sudo modprobe dm-mod
+modprobe dm-mod
 
 if [ ! -d "$MOUNTPOINT" ]
 then
   echo "Creating mount folder . . ."
-  sudo mkdir $MOUNTPOINT
+  mkdir $MOUNTPOINT
 fi
 
 echo "Mounting the LVM . . ."
 if [ "$(mount | grep $MOUNTPOINT)" != "" ]
 then
-    sudo umount $MOUNTPOINT
-    sudo vgchange -an $VOLGROUP
+    umount $MOUNTPOINT
+    vgchange -an $VOLGROUP
 fi
-sudo mount /dev/$VOLGROUP/root $MOUNTPOINT
+mount /dev/$VOLGROUP/root $MOUNTPOINT
 
 # Resize disk
 # enlarge the 3rd partition to 100%
-sudo parted -s $SDCARD resizepart 3 '100%'
-sudo pvresize ${SDCARD}3
+parted -s $SDCARD resizepart 3 '100%'
+pvresize ${SDCARD}3
 
 # extend the root filesystem to take up the space just added to the volume that it is in
-sudo lvextend -l +100%FREE /dev/$VOLGROUP/root
+lvextend -l +100%FREE /dev/$VOLGROUP/root
 
 # resize root partition for the server image (which uses xfs)
-sudo xfs_growfs -d $MOUNTPOINT
+xfs_growfs -d $MOUNTPOINT
 
 # Make Wi-Fi service and shell file to setup Wi-Fi on the next boot
 SERVICE_FILE=/etc/systemd/system/wifi.service
@@ -218,17 +258,17 @@ cat > ./mod.sh << EOF
 EOF
 
 echo "Execute main script . . ."
-sudo mv ./mod.sh $MOUNTPOINT
-sudo chmod +x $MOUNTPOINT/mod.sh
-sudo chroot $MOUNTPOINT /bin/bash ./mod.sh
+mv ./mod.sh $MOUNTPOINT
+chmod +x $MOUNTPOINT/mod.sh
+chroot $MOUNTPOINT /bin/bash ./mod.sh
 
 # Cleanup
 echo "File cleanup . . ."
-sudo rm -rf $MOUNTPOINT/mod.sh
-sudo umount $MOUNTPOINT
-sudo rm -rf $MOUNTPOINT
-sudo vgchange -an $VOLGROUP
-sudo rm -rf .ssh
+rm -rf $MOUNTPOINT/mod.sh
+umount $MOUNTPOINT
+rm -rf $MOUNTPOINT
+vgchange -an $VOLGROUP
+rm -rf .ssh
 
 echo "Done !"
-exit
+exit 0
