@@ -29,6 +29,13 @@ function version {
   echo "$@" | awk -F. '{ printf("%d%03d%03d%03d\n", $1,$2,$3,$4); }';
 }
 
+function get_update_plugin_query {
+  local USER=$1
+  local PLUGIN=$2
+
+  echo 'UPDATE `mysql`.`user` SET `plugin` = "'$PLUGIN'" WHERE `user`="'$USER'";'
+}
+
 function build_pwd_reset_query() {
   local DB=$1
   local VERSION=$2

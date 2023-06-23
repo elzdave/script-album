@@ -97,7 +97,7 @@ function get_update_plugin_query {
   local USER=$1
   local PLUGIN=$2
 
-  echo 'UPDATE `mysql`.`user` SET `plugin` = "'$PLUGIN'" WHERE `user`="root";'
+  echo 'UPDATE `mysql`.`user` SET `plugin` = "'$PLUGIN'" WHERE `user`="'$USER'";'
 }
 
 function build_pwd_reset_query {
