@@ -49,9 +49,9 @@ function build_pwd_reset_query() {
     if [ $(version "$VERSION") -lt $(version "10.2") ]; then
       # This query works on MariaDB prior to 10.2
       # Warning: this reset query involved low level hacks
-      local CLEAR=$(get_update_plugin_query '$USERNAME')
+      local CLEAR=$(get_update_plugin_query $USERNAME)
       local RESET_PWD='UPDATE `mysql`.`user` SET `password` = PASSWORD("'$PASSWORD'") WHERE `user`="'$USERNAME'";'
-      local RESTORE=$(get_update_plugin_query '$USERNAME' mysql_native_password)
+      local RESTORE=$(get_update_plugin_query $USERNAME mysql_native_password)
       local BUILT_QUERY="${FLUSH_QUERY} ${CLEAR} ${FLUSH_QUERY} ${RESET_PWD} ${FLUSH_QUERY} ${RESTORE} ${FLUSH_QUERY}"
     elif [[ $(version "$VERSION") -ge $(version "10.2") && $(version "$VERSION") -lt $(version "10.4") ]]; then
       # This query works on MariaDB 10.2+
