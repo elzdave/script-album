@@ -1,0 +1,11 @@
+version: 2
+authtoken: <add_your_token_here>
+tunnels:
+  web:
+    proto: http
+    addr: 80
+    domain: <web_domain>
+  ssh:
+    proto: tcp
+    addr: 22
+    domain: <ssh_domain>
