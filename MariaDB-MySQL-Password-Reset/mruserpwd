@@ -139,6 +139,7 @@ then
   read -s -p "Please enter $(echo -e ${LRED}root${NC}) password to continue : " ROOT_PASSWORD
   echo
   reset_user_password "${DB}:${VERSION_NUMBER}" $DB_USERNAME $DB_PASSWORD $ROOT_PASSWORD
+  echo -e "${LGREEN}Reset password completed.${NC}"
   exit 0
 else
   echo -e "${LRED}Password mismatch! Exiting . . .${NC}"
