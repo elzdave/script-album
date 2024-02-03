@@ -7,7 +7,7 @@
 # Usage     : sudo bash mrrootpwd [new_root_pwd]
 # Example   : sudo bash mrrootpwd sTr0n9p45sw0Rd
 #
-# (c) 2023. David Eleazar
+# (c) 2023 - 2024. David Eleazar
 
 # Global variables
 MY_CNF_DIR=/etc/my.cnf.d
@@ -37,60 +37,71 @@ function version {
   echo "$@" | awk -F. '{ printf("%d%03d%03d%03d\n", $1,$2,$3,$4); }';
 }
 
+function backup_and_patch_config {
+  local CONFIG=$1
+  cp -p $CONFIG $CONFIG.bak
+  sed -i '/\[mysqld\]/a skip-grant-tables\nskip-networking' $CONFIG
+}
+
+function restore_original_config {
+  local CONFIG=$1
+  cp -p $CONFIG.bak $CONFIG
+  rm $CONFIG.bak
+}
+
 function load_unsecure_config {
   if [ -d "$MY_CNF_DIR" ] 
   then
-    echo "Directory $MY_CNF_DIR exists."
+    echo -e "Directory ${YELLOW}$MY_CNF_DIR${NC} exists."
     if [ -f "$MARIADB_CNF_FILE" ]
     then
-      echo "Backuping $MARIADB_CNF_FILE as $MARIADB_CNF_FILE.bak . . ."
-      cp -p $MARIADB_CNF_FILE $MARIADB_CNF_FILE.bak
-      sed -i '/\[mysqld\]/a skip-grant-tables\nskip-networking' $MARIADB_CNF_FILE
+      echo -e "File ${LCYAN}$MARIADB_CNF_FILE${NC} exists."
+      echo -e "Backuping ${LCYAN}$MARIADB_CNF_FILE${NC} as ${LCYAN}$MARIADB_CNF_FILE.bak${NC} . . ."
+      backup_and_patch_config $MARIADB_CNF_FILE
     else
-      echo "Directory $MY_CNF_DIR exists but $MARIADB_CNF_FILE not found."
-      echo "Will edit main $MAIN_CONFIG config."
-      echo "Backuping $MAIN_CONFIG as $MAIN_CONFIG.bak . . ."
-      cp -p $MAIN_CONFIG $MAIN_CONFIG.bak
-      sed -i '/\[mysqld\]/a skip-grant-tables\nskip-networking' $MAIN_CONFIG
+      echo -e "File ${LCYAN}$MARIADB_CNF_FILE${NC} ${RED}does not exist.${NC}"
+      echo -e "Will edit the ${LGREEN}$MAIN_CONFIG${NC} main config."
+      echo -e "Backuping ${LGREEN}$MAIN_CONFIG${NC} as ${LGREEN}$MAIN_CONFIG.bak${NC} . . ."
+      backup_and_patch_config $MAIN_CONFIG
     fi
   else
-    echo "Directory $MY_CNF_DIR does not exists. Will edit main $MAIN_CONFIG config."
-    echo "Backuping $MAIN_CONFIG as $MAIN_CONFIG.bak . . ."
-    cp -p $MAIN_CONFIG $MAIN_CONFIG.bak
-    sed -i '/\[mysqld\]/a skip-grant-tables\nskip-networking' $MAIN_CONFIG
+    echo -e "Directory ${YELLOW}$MY_CNF_DIR${NC} ${RED}does not exist.${NC}"
+    echo -e "Will edit the ${LGREEN}$MAIN_CONFIG${NC} main config."
+    echo -e "Backuping ${LGREEN}$MAIN_CONFIG${NC} as ${LGREEN}$MAIN_CONFIG.bak${NC} . . ."
+    backup_and_patch_config $MAIN_CONFIG
   fi
 }
 
 function check_restore_secure_config {
   if [ -d "$MY_CNF_DIR" ] 
   then
+    echo -e "Directory ${YELLOW}$MY_CNF_DIR${NC} exists."
     if [ -f "$MARIADB_CNF_FILE.bak" ]
     then
-      echo "Directory $MY_CNF_DIR exists and $MARIADB_CNF_FILE backup found."
-      echo "Restoring original $MARIADB_CNF_FILE . . ."
-      cp -p $MARIADB_CNF_FILE.bak $MARIADB_CNF_FILE
-      rm $MARIADB_CNF_FILE.bak
+      echo -e "The backup of ${LCYAN}$MARIADB_CNF_FILE${NC} file exists."
+      echo -e "Restoring original ${LCYAN}$MARIADB_CNF_FILE${NC} . . ."
+      restore_original_config $MARIADB_CNF_FILE
     else
-      echo "Directory $MY_CNF_DIR exists but $MARIADB_CNF_FILE backup not found."
-      echo "Will search for $MAIN_CONFIG backup"
+      echo -e "The backup of ${LCYAN}$MARIADB_CNF_FILE${NC} file ${RED}does not exist.${NC}"
+      echo -e "Will search for ${LGREEN}$MAIN_CONFIG${NC} backup . . ."
       if [ -f "$MAIN_CONFIG.bak" ]
       then
-        echo "$MAIN_CONFIG backup found. Restoring original $MAIN_CONFIG . . ."
-        cp -p $MAIN_CONFIG.bak $MAIN_CONFIG
-        rm $MAIN_CONFIG.bak
+        echo -e "The backup of ${LGREEN}$MAIN_CONFIG${NC} exists."
+        echo -e "Restoring original ${LGREEN}$MAIN_CONFIG${NC} . . ."
+        restore_original_config $MAIN_CONFIG
       else
-        echo "No backup found."
+        echo -e "${RED}No backup found.${NC}"
       fi
     fi
   else
-    echo "Directory $MY_CNF_DIR does not exists."
+    echo -e "Directory ${YELLOW}$MY_CNF_DIR${NC} ${RED}does not exist.${NC}"
     if [ -f "$MAIN_CONFIG.bak" ]
     then
-      echo "$MAIN_CONFIG backup found. Restoring original $MAIN_CONFIG . . ."
-      cp -p $MAIN_CONFIG.bak $MAIN_CONFIG
-      rm $MAIN_CONFIG.bak
+      echo -e "The backup of ${LGREEN}$MAIN_CONFIG${NC} exists."
+      echo -e "Restoring original ${LGREEN}$MAIN_CONFIG${NC} . . ."
+      restore_original_config $MAIN_CONFIG
     else
-      echo "No backup found."
+      echo -e "${RED}No backup found.${NC}"
     fi
   fi
 }
@@ -217,10 +228,14 @@ else
     echo -e "Will use ${LGREEN}systemctl${NC} service manager"
     SERVICE_NAME=$SERVICE_NAME_SYSTEMD
     SERVICE_MANAGER=systemctl     # SystemD
-  else
+  elif [ "$SERVICE_NAME_INITD" != "" ]; then
     echo -e "Will use ${CYAN}init.d${NC} service manager"
     SERVICE_NAME=$SERVICE_NAME_INITD
     SERVICE_MANAGER=service       # SysV init.d
+  else
+    echo -e "${RED} No supported service manager detected.${NC}"
+    echo -e "Please make sure that the database service is already registered and enabled."
+    exit 3
   fi
 
   IS_MARIADB=$(mysql --version | grep MariaDB)

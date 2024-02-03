@@ -4,7 +4,7 @@
 #
 # Usage     : bash mruserpwd
 #
-# (c) 2023. David Eleazar
+# (c) 2023 - 2024. David Eleazar
 
 # ANSI colors
 NC='\033[0m'
