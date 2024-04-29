@@ -17,7 +17,9 @@
 # (c) 2023. David Eleazar
 
 # Global variables
-NGROK_DIR=/opt/ngrok
+CURRENT_USER=$(logname)
+NGROK_DIR=/usr/local/bin
+NGROK_CONFIG_DIR=$(getent passwd $(logname) | cut -d: -f6)/.config/ngrok
 SERVICE_DIR=/etc/systemd/system
 
 # ANSI colors
@@ -109,32 +111,39 @@ function download_and_extract_bin() {
 
 function build_config() {
     echo -e "Preparing ${WHITE}Ngrok${NC}'s configuration file . . ."
-    cp ngrok.yml.example $NGROK_DIR/ngrok.yml
+    if [[ ! -d "$NGROK_CONFIG_DIR" ]]; then
+        echo -e "Creating Ngrok's config directory at ${LGREEN}$NGROK_CONFIG_DIR${NC}"
+        mkdir $NGROK_CONFIG_DIR -p
+    fi
+    cp ngrok.yml.example $NGROK_CONFIG_DIR/ngrok.yml
 
     echo
     read -p "Enter Authtoken : " AUTHTOKEN
-    sed -i "s/<add_your_token_here>/$AUTHTOKEN/g" $NGROK_DIR/ngrok.yml
+    sed -i "s/<add_your_token_here>/$AUTHTOKEN/g" $NGROK_CONFIG_DIR/ngrok.yml
 
     read -p "Enter Web tunnel domain (leave blank if none) : " WEB_DOMAIN
     if [[ "$WEB_DOMAIN" != "" ]]; then
-        sed -i "s/<web_domain>/\"$WEB_DOMAIN\"/g" $NGROK_DIR/ngrok.yml
+        sed -i "s/<web_domain>/\"$WEB_DOMAIN\"/g" $NGROK_CONFIG_DIR/ngrok.yml
     else
-        sed -i "/<web_domain>/d" $NGROK_DIR/ngrok.yml
+        sed -i "/<web_domain>/d" $NGROK_CONFIG_DIR/ngrok.yml
     fi
 
     read -p "Enter SSH tunnel domain (leave blank if none) : " SSH_DOMAIN
     if [[ "$SSH_DOMAIN" != "" ]]; then
-        sed -i "s/<ssh_domain>/\"$SSH_DOMAIN\"/g" $NGROK_DIR/ngrok.yml
+        sed -i "s/<ssh_domain>/\"$SSH_DOMAIN\"/g" $NGROK_CONFIG_DIR/ngrok.yml
     else
-        sed -i "/<ssh_domain>/d" $NGROK_DIR/ngrok.yml
+        sed -i "/<ssh_domain>/d" $NGROK_CONFIG_DIR/ngrok.yml
     fi
 
-    echo -e "Configuration file created."
+    echo -e "Setting owner of ${LGREEN}$NGROK_CONFIG_DIR${NC}"
+    chown $CURRENT_USER:$CURRENT_USER $NGROK_CONFIG_DIR -R
+
+    echo -e "${LCYAN}Configuration file created.${NC}"
 }
 
 function enable_service() {
     echo -e "Enabling ${WHITE}Ngrok${NC}'s service . . ."
-    $NGROK_DIR/ngrok service install --config=$NGROK_DIR/ngrok.yml
+    $NGROK_DIR/ngrok service install --config=$NGROK_CONFIG_DIR/ngrok.yml
     $NGROK_DIR/ngrok service start
 }
 
@@ -147,6 +156,7 @@ function disable_service() {
 function delete_resources() {
     echo -e "Deleting ${WHITE}Ngrok${NC}'s resources . . ."
     rm -rf $NGROK_DIR
+    rm -rf $NGROK_CONFIG_DIR
 }
 
 function install() {
@@ -165,15 +175,29 @@ function uninstall() {
     echo -e "${LBLUE}Done uninstalling Ngrok.${NC}"
 }
 
+function update() {
+    if [[ ! -f "$NGROK_DIR/ngrok" ]]; then
+        echo -e "${LRED}ERROR: ${WHITE}$NGROK_DIR/ngrok${LRED} not found. Exiting . . .${NC}"
+        exit 1
+    fi
+
+    echo -e "Updating ${WHITE}Ngrok${NC} . . ."
+    echo -e "Before update version is ${YELLOW}$(ngrok -v | awk -F' ' '{print $3}')${NC}"
+    ngrok update --config $NGROK_CONFIG_DIR/ngrok.yml
+    echo -e "After update version is ${YELLOW}$(ngrok -v | awk -F' ' '{print $3}')${NC}"
+    echo -e "${LBLUE}Done updating Ngrok.${NC}"
+}
+
 function main() {
     sanity_check
 
     local MODE=install
 
     echo "Select mode :"
-    select opts in "Install" "Uninstall"; do
+    select opts in "Install" "Update" "Uninstall"; do
         case $opts in
             Install) MODE=install; break;;
+            Update) MODE=update; break;;
             Uninstall) MODE=uninstall; break;;
             *) echo "Invalid option $opts";;
         esac
@@ -181,6 +205,8 @@ function main() {
 
     if [[ "$MODE" == "install" ]]; then
         install
+    elif [[ "$MODE" == "update" ]]; then
+        update
     else
         uninstall
     fi
