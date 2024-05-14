@@ -8,6 +8,7 @@
 2. [Fearless: Fedora Server on Raspberry Pi Headless patch](Fearless-Fedora-Server-Raspberry-Pi-Patch)
 3. [Android Automatic Wireless Debugging](Android-Automatic-Wireless-Debugging)
 4. [Ngrok Linux Service installer/uninstaller](Ngrok-Linux-Service)
+5. [Aapanel Nginx installer/uninstaller](Nginx-Aapanel-Install)
 
 ### Contribution
 
