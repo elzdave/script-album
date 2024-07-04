@@ -41,5 +41,4 @@ This folder contains 2 scripts that serve different purposes:
 
 ## Operating System Support :
 
-- Ubuntu
-- Fedora
+Any Linux distro supported by MariaDB/MySQL, and using SystemD/init.d service manager.

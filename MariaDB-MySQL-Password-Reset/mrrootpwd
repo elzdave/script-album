@@ -49,7 +49,7 @@ function restore_original_config {
   rm $CONFIG.bak
 }
 
-function load_unsecure_config {
+function load_insecure_config {
   if [ -d "$MY_CNF_DIR" ] 
   then
     echo -e "Directory ${YELLOW}$MY_CNF_DIR${NC} exists."
@@ -106,23 +106,42 @@ function check_restore_secure_config {
   fi
 }
 
-function begin_unsecure_service {
+function start_stop_service {
   local SERVICE_MANAGER=$1
   local SERVICE_NAME=$2
+  local MODE=$3   # mode can be "secure" or "insecure"
 
-  $SERVICE_MANAGER stop $SERVICE_NAME
+  if [[ "$SERVICE_MANAGER" == "service" ]]; then
+    $SERVICE_MANAGER $SERVICE_NAME stop
+  else
+    $SERVICE_MANAGER stop $SERVICE_NAME
+  fi
+  
   check_restore_secure_config
-  load_unsecure_config
-  $SERVICE_MANAGER start $SERVICE_NAME
+
+  if [[ "$MODE" == "insecure" ]]; then
+    load_insecure_config
+  fi
+  
+  if [[ "$SERVICE_MANAGER" == "service" ]]; then
+    $SERVICE_MANAGER $SERVICE_NAME start
+  else
+    $SERVICE_MANAGER start $SERVICE_NAME
+  fi
 }
 
-function end_unsecure_service {
+function begin_insecure_service {
   local SERVICE_MANAGER=$1
   local SERVICE_NAME=$2
 
-  $SERVICE_MANAGER stop $SERVICE_NAME
-  check_restore_secure_config
-  $SERVICE_MANAGER start $SERVICE_NAME
+  start_stop_service $SERVICE_MANAGER $SERVICE_NAME "insecure"
+}
+
+function end_insecure_service {
+  local SERVICE_MANAGER=$1
+  local SERVICE_NAME=$2
+
+  start_stop_service $SERVICE_MANAGER $SERVICE_NAME "secure"
 }
 
 function get_update_plugin_query {
@@ -183,7 +202,7 @@ function reset_password {
   local VERSION=$(echo $2 | awk -F':' '{print $2}')
   local PASSWORD=$3
 
-  begin_unsecure_service $SERVICE_MANAGER $SERVICE_NAME
+  begin_insecure_service $SERVICE_MANAGER $SERVICE_NAME
 
   local QUERY=$(build_pwd_reset_query $DB $VERSION $PASSWORD)
 
@@ -204,7 +223,7 @@ function reset_password {
     echo -e "${LRED}Failed to change root password. Please try again.${NC}"
   fi
 
-  end_unsecure_service $SERVICE_MANAGER $SERVICE_NAME
+  end_insecure_service $SERVICE_MANAGER $SERVICE_NAME
 }
 
 # --- Main function execution ---
