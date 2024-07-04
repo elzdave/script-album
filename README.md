@@ -9,6 +9,7 @@
 3. [Android Automatic Wireless Debugging](Android-Automatic-Wireless-Debugging)
 4. [Ngrok Linux Service installer/uninstaller](Ngrok-Linux-Service)
 5. [Aapanel Nginx installer/uninstaller](Nginx-Aapanel-Install)
+6. [AlmaLinux Cloud Init generator](AlmaLinux-Cloud-Init-Generator)
 
 ### Contribution
 
