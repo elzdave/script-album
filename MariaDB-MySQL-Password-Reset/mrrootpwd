@@ -111,7 +111,7 @@ function start_stop_service {
   local SERVICE_NAME=$2
   local MODE=$3   # mode can be "secure" or "insecure"
 
-  if [[ "$SERVICE_MANAGER" == "service" ]]; then
+  if [ "$SERVICE_MANAGER" == "service" ]; then
     $SERVICE_MANAGER $SERVICE_NAME stop
   else
     $SERVICE_MANAGER stop $SERVICE_NAME
@@ -119,11 +119,11 @@ function start_stop_service {
   
   check_restore_secure_config
 
-  if [[ "$MODE" == "insecure" ]]; then
+  if [ "$MODE" == "insecure" ]; then
     load_insecure_config
   fi
   
-  if [[ "$SERVICE_MANAGER" == "service" ]]; then
+  if [ "$SERVICE_MANAGER" == "service" ]; then
     $SERVICE_MANAGER $SERVICE_NAME start
   else
     $SERVICE_MANAGER start $SERVICE_NAME

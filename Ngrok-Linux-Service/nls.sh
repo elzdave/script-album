@@ -21,6 +21,8 @@ CURRENT_USER=$(logname)
 NGROK_DIR=/usr/local/bin
 NGROK_CONFIG_DIR=$(getent passwd $(logname) | cut -d: -f6)/.config/ngrok
 SERVICE_DIR=/etc/systemd/system
+STUB_DIR=stubs
+NGROK_EXAMPLE_CONF=${STUB_DIR}/ngrok.yml.example
 
 # ANSI colors
 NC='\033[0m'
@@ -87,14 +89,14 @@ function get_arch() {
 
 function download_and_extract_bin() {
     local ARCH=$(get_arch)
-    local TGZ=ngrok-v3-stable-linux-$ARCH.tgz
-    local DOWNLOAD_URL=https://bin.equinox.io/c/bNyj1mQVY4c/$TGZ
+    local TGZ="ngrok-v3-stable-linux-$ARCH.tgz"
+    local DOWNLOAD_URL="https://bin.equinox.io/c/bNyj1mQVY4c/$TGZ"
 
     echo -e "Downloading ${WHITE}Ngrok${NC} for ${CYAN}$ARCH${NC} to ${LGREEN}$NGROK_DIR${NC}"
     wget $DOWNLOAD_URL -O $NGROK_DIR/$TGZ
 
     # Check whether file is successfully downloaded
-    if [[ ! -f "$NGROK_DIR/$TGZ" ]]; then
+    if [ ! -f "$NGROK_DIR/$TGZ" ]; then
         echo -e "${LRED}ERROR: Downloaded archive ${LPURPLE}$TGZ${LRED} not found. Exiting . . .${NC}"
         exit 1
     fi
@@ -111,28 +113,42 @@ function download_and_extract_bin() {
 
 function build_config() {
     echo -e "Preparing ${WHITE}Ngrok${NC}'s configuration file . . ."
-    if [[ ! -d "$NGROK_CONFIG_DIR" ]]; then
+    if [ ! -d "$NGROK_CONFIG_DIR" ]; then
         echo -e "Creating Ngrok's config directory at ${LGREEN}$NGROK_CONFIG_DIR${NC}"
         mkdir $NGROK_CONFIG_DIR -p
     fi
-    cp ngrok.yml.example $NGROK_CONFIG_DIR/ngrok.yml
+    cp $NGROK_EXAMPLE_CONF $NGROK_CONFIG_DIR/ngrok.yml
 
     echo
     read -p "Enter Authtoken : " AUTHTOKEN
     sed -i "s/<add_your_token_here>/$AUTHTOKEN/g" $NGROK_CONFIG_DIR/ngrok.yml
 
     read -p "Enter Web tunnel domain (leave blank if none) : " WEB_DOMAIN
-    if [[ "$WEB_DOMAIN" != "" ]]; then
+    if [ "$WEB_DOMAIN" != "" ]; then
         sed -i "s/<web_domain>/\"$WEB_DOMAIN\"/g" $NGROK_CONFIG_DIR/ngrok.yml
     else
         sed -i "/<web_domain>/d" $NGROK_CONFIG_DIR/ngrok.yml
     fi
 
+    read -p "Enter targeted Web port (leave blank to use default port 80) : " WEB_PORT
+    if [ "$WEB_PORT" != "" ]; then
+        sed -i "s/<web_port>/$WEB_PORT/g" $NGROK_CONFIG_DIR/ngrok.yml
+    else
+        sed -i "s/<web_port>/80/g" $NGROK_CONFIG_DIR/ngrok.yml
+    fi
+
     read -p "Enter SSH tunnel domain (leave blank if none) : " SSH_DOMAIN
-    if [[ "$SSH_DOMAIN" != "" ]]; then
+    if [ "$SSH_DOMAIN" != "" ]; then
         sed -i "s/<ssh_domain>/\"$SSH_DOMAIN\"/g" $NGROK_CONFIG_DIR/ngrok.yml
     else
         sed -i "/<ssh_domain>/d" $NGROK_CONFIG_DIR/ngrok.yml
+    fi
+
+    read -p "Enter SSH tunnel port (leave blank to use default port 22) : " SSH_PORT
+    if [ "$SSH_PORT" != "" ]; then
+        sed -i "s/<ssh_port>/$SSH_PORT/g" $NGROK_CONFIG_DIR/ngrok.yml
+    else
+        sed -i "s/<ssh_port>/22/g" $NGROK_CONFIG_DIR/ngrok.yml
     fi
 
     echo -e "Setting owner of ${LGREEN}$NGROK_CONFIG_DIR${NC}"
@@ -203,9 +219,9 @@ function main() {
         esac
     done
 
-    if [[ "$MODE" == "install" ]]; then
+    if [ "$MODE" == "install" ]; then
         install
-    elif [[ "$MODE" == "update" ]]; then
+    elif [ "$MODE" == "update" ]; then
         update
     else
         uninstall

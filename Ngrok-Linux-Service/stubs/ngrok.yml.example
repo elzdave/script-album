@@ -3,9 +3,9 @@ authtoken: <add_your_token_here>
 tunnels:
   web:
     proto: http
-    addr: 80
+    addr: <web_port>
     domain: <web_domain>
   ssh:
     proto: tcp
-    addr: 22
+    addr: <ssh_port>
     domain: <ssh_domain>
