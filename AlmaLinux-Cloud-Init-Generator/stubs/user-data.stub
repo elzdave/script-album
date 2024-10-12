@@ -1,0 +1,32 @@
+#cloud-config
+#
+# This is default cloud-init config file for AlmaLinux Raspberry Pi image.
+#
+# If you want additional customization, refer to cloud-init documentation and
+# examples. Please note configurations written in this file will be usually
+# applied only once at very first boot.
+#
+# https://cloudinit.readthedocs.io/en/latest/reference/examples.html
+
+hostname: <add_your_hostname_here>.local
+ssh_pwauth: <enable_password_auth_ssh>
+
+users:
+  - name: <add_your_user_here>
+    groups: [ adm, systemd-journal, wheel ]
+    lock_passwd: false
+    homedir: /home/<add_your_user_here>
+    shell: /bin/bash
+    passwd: <add_your_password_here>
+    ssh_authorized_keys:
+      - <public_ssh_key_placeholder>
+ssh_keys:
+  - <pregenerated_ssh_keys_placeholder>
+
+runcmd:
+  - hostnamectl hostname <add_your_hostname_here>
+  - timedatectl set-timezone <add_your_timezone_here>
+  - systemctl reload sshd
+  - nmcli dev wifi connect "<add_your_wifi_ssid_here>" password "<add_your_wifi_pwd_here>"
+  - nmcli con mod "<add_your_wifi_ssid_here>" wifi.cloned-mac-address "<add_your_static_mac_here>"
+  - nmcli con up "<add_your_wifi_ssid_here>"

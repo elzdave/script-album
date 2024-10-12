@@ -5,4 +5,4 @@ user-data*
 # ... except them.
 !.gitignore
 !ssh/README.md
-!stubs
+!stubs/*
