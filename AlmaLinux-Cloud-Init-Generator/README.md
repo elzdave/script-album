@@ -2,6 +2,16 @@
 
 This AlmaLinux Cloud Init generator will build an `user-data` configuration file to be used by AlmaLinux instances for system initialization at the first time boot. Specially tuned for Raspberry Pi images.
 
+What this script do:
+
+1. Create user account
+2. Configure timezone, hostname
+3. Enable/disable SSH password login
+4. Change SSH port
+5. Setup WiFi connection
+6. Tune the SELinux permission for SSH
+7. Enable/disable system reboot after initialization
+
 ## Usage :
 
 1. [Optional] put pre-generated SSH key(s) on folder `ssh`.

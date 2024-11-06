@@ -102,6 +102,12 @@ function input_user_data() {
         SSH_PWD_COLOR=$LBLUE
     fi
 
+    # change SSH port
+    read -p "Change SSH port? (y/[n]) : " SSH_PORT_CHG
+    if [[ "${SSH_PORT_CHG,,}" == "y" || "${SSH_PORT_CHG,,}" == "yes" ]]; then
+        read -p "Enter desired SSH port : " SSH_PORT
+    fi
+
     # hostname
     read -p "Hostname  : " HOSTNAME
     if [[ "$HOSTNAME" == "" ]]; then
@@ -126,6 +132,9 @@ function input_user_data() {
         fi
     fi
 
+    # enable reboot
+    read -p "Enable system reboot? (Recommended) (y/[n]) : " ENABLE_REBOOT
+
     # preview
     echo
     echo -e "${WHITE}##### Preview #####${NC}"
@@ -135,6 +144,10 @@ function input_user_data() {
     echo -e "${LGREEN}Timezone is ${LBLUE}$TIMEZONE${NC}"
     echo -e "${LGREEN}SSH password login will be ${SSH_PWD_COLOR}$SSH_PWD_LOGIN_STATUS.${NC}"
     
+    if [[ "${SSH_PORT_CHG,,}" == "y" || "${SSH_PORT_CHG,,}" == "yes" ]]; then
+        echo -e "${LGREEN}SSH port is ${WHITE}$SSH_PORT.${NC}"
+    fi
+
     if [[ "${WIFI_CONN_ENABLE,,}" == "y" || "${WIFI_CONN_ENABLE,,}" == "yes" ]]; then
         echo -e "${LGREEN}WiFi connection is ${LBLUE}enabled${NC}."
         echo -e "${LCYAN} -> SSID       : ${WHITE}$WIFI_SSID${NC}"
@@ -144,6 +157,12 @@ function input_user_data() {
         fi
     else
         echo -e "${LGREEN}WiFi connection is ${YELLOW}disabled${NC}."
+    fi
+
+    if [[ "${ENABLE_REBOOT,,}" == "y" || "${ENABLE_REBOOT,,}" == "yes" ]]; then
+        echo -e "${YELLOW}System will be rebooted after finished initial setup. This will take a few minutes before any SSH connection can be establised.${NC}"
+    else
+        echo -e "${WHITE}System will not be rebooted after finished initial setup. ${YELLOW}Note that the system will be in SELinux's permissive mode.${NC}"
     fi
 
     read -p "Proceed? ([y], n) : " PROCEED
@@ -262,6 +281,25 @@ function build_config() {
     awk -v old="<add_your_password_here>" -v new="$PASSWORD" '{gsub(old,new);print}' $FINAL_FILE > tmp && mv tmp $FINAL_FILE
     awk -v old="<add_your_timezone_here>" -v new="$TIMEZONE" '{gsub(old,new);print}' $FINAL_FILE > tmp && mv tmp $FINAL_FILE
 
+    # preparing for SSH port setup
+    if [[ "${SSH_PORT_CHG,,}" == "y" || "${SSH_PORT_CHG,,}" == "yes" ]]; then
+        SSH_PORT_CONF="sed -i 's/\\\#\\\?Port .\\\+/Port $SSH_PORT/' /etc/ssh/sshd_config"
+        SSH_PORT_SELINUX="semanage port -a -t ssh_port_t -p tcp $SSH_PORT"
+        SSH_ADD_PORT_FW="firewall-cmd --service=ssh --add-port=$SSH_PORT/tcp --permanent"
+        SSH_REM_PORT_FW="firewall-cmd --service=ssh --remove-port=22/tcp --permanent"
+
+        awk -v old="<change_ssh_port_config>" -v new="$SSH_PORT_CONF" '{gsub(old,new);print}' $FINAL_FILE > tmp && mv tmp $FINAL_FILE
+        awk -v old="<change_ssh_port_selinux>" -v new="$SSH_PORT_SELINUX" '{gsub(old,new);print}' $FINAL_FILE > tmp && mv tmp $FINAL_FILE
+        awk -v old="<add_ssh_port_firewall>" -v new="$SSH_ADD_PORT_FW" '{gsub(old,new);print}' $FINAL_FILE > tmp && mv tmp $FINAL_FILE
+        awk -v old="<rem_ssh_port_firewall>" -v new="$SSH_REM_PORT_FW" '{gsub(old,new);print}' $FINAL_FILE > tmp && mv tmp $FINAL_FILE    
+    else
+        # will not using custon SSH port
+        sed -i '/<change_ssh_port_config>/d' $FINAL_FILE
+        sed -i '/<change_ssh_port_selinux>/d' $FINAL_FILE
+        sed -i '/<add_ssh_port_firewall>/d' $FINAL_FILE
+        sed -i '/<rem_ssh_port_firewall>/d' $FINAL_FILE
+    fi
+
     # SSH key listing require special care
     if [[ "$PUB_KEY_LIST" != "" ]]; then
         # delete the SSH key placeholder first, then get the 'ssh_authorized_keys:' position
@@ -302,6 +340,14 @@ function build_config() {
     else
         sed -i "/nmcli dev wifi/d" $FINAL_FILE
         sed -i "/nmcli con/d" $FINAL_FILE
+    fi
+
+    if [[ "${ENABLE_REBOOT,,}" == "y" || "${ENABLE_REBOOT,,}" == "yes" ]]; then
+        sed -i "/<selinux_permissive_mode>/d" $FINAL_FILE
+        awk -v old="<enable_reboot>" -v new="reboot" '{gsub(old,new);print}' $FINAL_FILE > tmp && mv tmp $FINAL_FILE
+    else
+        awk -v old="<selinux_permissive_mode>" -v new="setenforce 0" '{gsub(old,new);print}' $FINAL_FILE > tmp && mv tmp $FINAL_FILE
+        sed -i "/<enable_reboot>/d" $FINAL_FILE
     fi
 
     echo -e "\n${LCYAN}Configuration file created.${NC}"

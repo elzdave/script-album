@@ -13,7 +13,7 @@ ssh_pwauth: <enable_password_auth_ssh>
 
 users:
   - name: <add_your_user_here>
-    groups: [ adm, systemd-journal, wheel ]
+    groups: [adm, systemd-journal, wheel]
     lock_passwd: false
     homedir: /home/<add_your_user_here>
     shell: /bin/bash
@@ -26,7 +26,24 @@ ssh_keys:
 runcmd:
   - hostnamectl hostname <add_your_hostname_here>
   - timedatectl set-timezone <add_your_timezone_here>
-  - systemctl reload sshd
   - nmcli dev wifi connect "<add_your_wifi_ssid_here>" password "<add_your_wifi_pwd_here>"
   - nmcli con mod "<add_your_wifi_ssid_here>" wifi.cloned-mac-address "<add_your_static_mac_here>"
   - nmcli con up "<add_your_wifi_ssid_here>"
+  - dnf install policycoreutils-python-utils -y
+  - sed -i 's/\#\?LoginGraceTime .\+/LoginGraceTime 1m/' /etc/ssh/sshd_config
+  - sed -i 's/\#\?PermitRootLogin .\+/PermitRootLogin no/' /etc/ssh/sshd_config
+  - sed -i 's/\#\?MaxAuthTries .\+/MaxAuthTries 4/' /etc/ssh/sshd_config
+  - sed -i 's/\#\?MaxSessions .\+/MaxSessions 6/' /etc/ssh/sshd_config
+  - sed -i 's/\#\?PubkeyAuthentication .\+/PubkeyAuthentication yes/' /etc/ssh/sshd_config
+  - sed -i 's/\#\?PermitEmptyPasswords .\+/PermitEmptyPasswords no/' /etc/ssh/sshd_config
+  - sed -i 's/\#\?ClientAliveInterval .\+/ClientAliveInterval 900/' /etc/ssh/sshd_config
+  - sed -i 's/\#\?ClientAliveCountMax .\+/ClientAliveCountMax 4/' /etc/ssh/sshd_config
+  - <change_ssh_port_config>
+  - echo 'Protocol 2' >> /etc/ssh/sshd_config
+  - <add_ssh_port_firewall>
+  - <rem_ssh_port_firewall>
+  - <change_ssh_port_selinux>
+  - touch /.autorelabel
+  - <selinux_permissive_mode>
+  - systemctl restart sshd
+  - <enable_reboot>
