@@ -160,9 +160,11 @@ function input_user_data() {
     fi
 
     if [[ "${ENABLE_REBOOT,,}" == "y" || "${ENABLE_REBOOT,,}" == "yes" ]]; then
-        echo -e "${YELLOW}System will be rebooted after finished initial setup. This will take a few minutes before any SSH connection can be establised.${NC}"
+        echo -e "${YELLOW}System will be rebooted after finished initial setup."
+        echo -e "This will take a few minutes before any SSH connection can be establised.${NC}"
     else
-        echo -e "${WHITE}System will not be rebooted after finished initial setup. ${YELLOW}Note that the system will be in SELinux's permissive mode.${NC}"
+        echo -e "${WHITE}System will not be rebooted after finished initial setup."
+        echo -e "${YELLOW}Note that the system will temporary in SELinux's ${LGREEN}permissive${YELLOW} mode until you reboot.${NC}"
     fi
 
     read -p "Proceed? ([y], n) : " PROCEED

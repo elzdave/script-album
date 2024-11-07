@@ -42,6 +42,7 @@ runcmd:
   - echo 'Protocol 2' >> /etc/ssh/sshd_config
   - <add_ssh_port_firewall>
   - <rem_ssh_port_firewall>
+  - firewall-cmd --reload
   - <change_ssh_port_selinux>
   - touch /.autorelabel
   - <selinux_permissive_mode>
