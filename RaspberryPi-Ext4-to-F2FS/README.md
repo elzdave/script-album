@@ -16,7 +16,7 @@ This script will:
 
 ## Usage :
 
-1. Run `sudo bash rpif2fs.sh /path/to/compress/live/image.{raw/img}.xz`, with `/path/to/compress/live/image.{raw/img}.xz` is the path to the corresponding live image to be used.
+1. Run `sudo bash rpif2fs.sh /path/to/compress/live/image.{raw/img}.xz`, where `/path/to/compress/live/image.{raw/img}.xz` is the path to the corresponding live image to be used.
 2. Follow the instruction on the screen.
 
 ## Supported Live Image :

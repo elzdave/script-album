@@ -137,22 +137,22 @@ function patch_system_file {
 
     # get fstab settings for root partition
     FSTAB_ROOT_ENTRY=$(cat $MOUNT_PARENT/tmp/etc/fstab | grep "ext4")
-    FSTAB_ROOT_ID=$(awk -F' ' '{print $1}' <<< $FSTAB_ROOT_ENTRY)
+    FSTAB_CURR_ROOT_ID=$(awk -F' ' '{print $1}' <<< $FSTAB_ROOT_ENTRY)
 
     # start patching fstab root entry line
-    if [[ "$FSTAB_ROOT_ID" == *"PART"* ]]; then
+    if [[ "$FSTAB_CURR_ROOT_ID" == *"PART"* ]]; then
         # if the fstab entry using PARTUUID as identifier, we use it as well
         echo -e "${LGREEN}Patching fstab PARTUUID data . . .${NC}"
-        ROOT_ID_VALUE=$(blkid -o value -s PARTUUID /dev/mapper/$loop)
-        ROOT_ID="PARTUUID=$ROOT_ID_VALUE"
+        FSTAB_NEW_ROOT_ID_VALUE=$(blkid -o value -s PARTUUID /dev/mapper/$loop)
+        FSTAB_NEW_ROOT_ID="PARTUUID=$FSTAB_NEW_ROOT_ID_VALUE"
     else
         # the fstab entry not using PARTUUID, probably using UUID
         echo -e "${LBLUE}Patching fstab UUID data . . .${NC}"
-        ROOT_ID_VALUE=$(blkid -o value -s UUID /dev/mapper/$loop)
-        ROOT_ID="UUID=$ROOT_ID_VALUE"
+        FSTAB_NEW_ROOT_ID_VALUE=$(blkid -o value -s UUID /dev/mapper/$loop)
+        FSTAB_NEW_ROOT_ID="UUID=$FSTAB_NEW_ROOT_ID_VALUE"
     fi
 
-    FSTAB_ROOT_ENTRY=$(sed -e "s/$FSTAB_ROOT_ID/$ROOT_ID/g" <<< $FSTAB_ROOT_ENTRY)
+    FSTAB_ROOT_ENTRY=$(sed -e "s/$FSTAB_CURR_ROOT_ID/$FSTAB_NEW_ROOT_ID/g" <<< $FSTAB_ROOT_ENTRY)
 
     echo -e "${LBLUE}Patching fstab FS type . . .${NC}"
     FSTAB_ROOT_ENTRY=$(sed -e "s/ext4/f2fs/g" <<< $FSTAB_ROOT_ENTRY)
@@ -167,13 +167,19 @@ function patch_system_file {
     CMDLINE_ENTRY=$(cat $MOUNT_PARENT/bootfs/cmdline.txt)
 
     echo -e "${LBLUE}Patching cmdline.txt root identifier . . .${NC}"
-    CMDLINE_ENTRY=$(sed -e "s/ext4/f2fs/g" <<< $CMDLINE_ENTRY)
+    CMDLINE_CURR_ROOT_ID=$(echo $CMDLINE_ENTRY | awk -F'root=' '{print $2}' | awk -F' ' '{print $1}')
+
+    # seems that AlmaLinux (and possibly RaspberryPi OS?) can only boot
+    # from PARTUUID identifier, so we need to set different identifer
+    # value for cmdline.txt
+    CMDLINE_NEW_ROOT_ID_VALUE=$(blkid -o value -s PARTUUID /dev/mapper/$loop)
+    CMDLINE_NEW_ROOT_ID="PARTUUID=$CMDLINE_NEW_ROOT_ID_VALUE"
+    CMDLINE_ENTRY=$(sed -e "s/$CMDLINE_CURR_ROOT_ID/$CMDLINE_NEW_ROOT_ID/g" <<< $CMDLINE_ENTRY)
 
     echo -e "${LBLUE}Patching cmdline.txt root FS type . . .${NC}"
-    CMDLINE_ROOT=$(echo $CMDLINE_ENTRY | awk -F'root=' '{print $2}' | awk -F' ' '{print $1}')
-    CMDLINE_ENTRY=$(sed -e "s/$CMDLINE_ROOT/$ROOT_ID/g" <<< $CMDLINE_ENTRY)
+    CMDLINE_ENTRY=$(sed -e "s/ext4/f2fs/g" <<< $CMDLINE_ENTRY)
 
-    echo -e "${LGREEN}Storing patched line to fstab file . . .${NC}"
+    echo -e "${LGREEN}Storing patched line to cmdline.txt file . . .${NC}"
     sed -i "/.*ext4.*/c $CMDLINE_ENTRY" $MOUNT_PARENT/bootfs/cmdline.txt
 
     # For debugging only. Uncomment lines below if needed.
