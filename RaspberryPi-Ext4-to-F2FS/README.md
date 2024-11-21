@@ -16,13 +16,14 @@ This script will:
 
 ## Usage :
 
-1. Run `sudo bash rpif2fs.sh /path/to/compress/live/image.{raw/img}.xz`, where `/path/to/compress/live/image.{raw/img}.xz` is the path to the corresponding live image to be used.
+1. Run `sudo bash rpif2fs.sh "/path/to/compress/live/image.{raw/img}.xz"`, where `/path/to/compress/live/image.{raw/img}.xz` is the path to the corresponding live image to be used. Please note the double tick ("") is used to allow using path containing spaces.
 2. Follow the instruction on the screen.
 
-## Supported Live Image :
+## Tested Live Image :
 
 - Official Raspberry Pi OS
 - AlmaLinux image for Raspberry Pi
+- Rocky Linux image for Raspberry Pi
 
 ## Supported Operating System :
 
