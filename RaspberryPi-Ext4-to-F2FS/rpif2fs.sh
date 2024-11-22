@@ -2,7 +2,10 @@
 
 # rpif2fs.sh : Raspberry Pi Ext4 to F2FS live image converter
 #
-# Usage             : sudo bash rpif2fs.sh "/path/to/zipped/image.{img/raw}.xz"
+# Usage             : sudo bash rpif2fs.sh ["/path/to/zipped/image.{img/raw}.xz"]
+#                     The path is optional. If you didn't supply one, the file
+#                     selection dialog will open to choose.
+#
 # Requirements      : f2fs-tools, xz, kpartx
 # Supported image   : Official Raspberry Pi OS, AlmaLinux
 #
@@ -35,6 +38,8 @@ TEMP_FS_FILE=/tmp/rpif2.fs
 # Those values will be set later by functions below
 LOOP_DEVICES=()
 MOUNT_DIR_ARRAY=()
+PATCHED_FILE=
+EXTRACTED_FILE=
 MOUNTED_BOOT_PART=
 MOUNTED_ROOT_PART=
 MOUNTED_TMP_PART=$MOUNT_PARENT/tmp
@@ -50,14 +55,6 @@ function sanity_check {
         exit 1
     fi
 
-    if [ "$1" == "" ]; then
-        echo -e "${WHITE}Usage: sudo bash rpif2fs.sh /path/to/image.img.xz${NC}"
-        echo "Where /path/to/image.img.xz is path to compressed live image."
-        echo "_____"
-        echo -e "${LRED}ERROR: You must supply the path to the compressed image.${NC}"
-        exit 2
-    fi
-
     echo -e "${LGREEN}Environment is sane.${NC}"
 }
 
@@ -71,6 +68,15 @@ function install_dependencies {
     fi
 
     $PM install xz f2fs-tools kpartx -y
+}
+
+function select_file {
+    local home_dir=$(getent passwd $(logname) | cut -d: -f6)
+    if [[ ! -z $(which kdialog) ]]; then
+        XZ_IMG=$(kdialog --title="Choose Live Image File" --getopenfilename $home_dir '*.xz')
+    else
+        XZ_IMG=$(zenity --file-selection --title="Choose Live Image File" --filename=$home_dir)  
+    fi
 }
 
 function extract_file {
@@ -293,10 +299,21 @@ function compress_modified_image {
     xz -zfv8 "$1"
 }
 
-function main() {
+function main {
     sanity_check $@
     install_dependencies
 
+    # If no file specified from argument, then open file dialog to select one
+    while [ "$XZ_IMG" == "" ]
+    do
+        select_file
+
+        if [ "$XZ_IMG" == "" ]; then
+            echo -e "${YELLOW}Choose one image file to continue.${NC}"
+        fi
+    done
+
+    echo -e "${LGREEN}You choose ${WHITE}$XZ_IMG${NC}"
     extract_file "$XZ_IMG"
     
     EXTRACTED_FILE=$(get_extracted_file_path "$XZ_IMG")
@@ -311,7 +328,9 @@ function main() {
     backup_root_content
 
     echo -e "${YELLOW}The live image content was backed up and ready to be formatted.${NC}"
-    read -p "Press any key to continue . . ."
+
+    # Uncomment this line of needed
+    # read -p "Press Enter to continue . . ."
 
     # Do the heavy-lifting
     format_root_as_f2fs "$ROOT_LOOP"
@@ -319,7 +338,9 @@ function main() {
     restore_root_content "$ROOT_LOOP"
 
     echo -e "${LGREEN}The live image content was restored.${NC}"
-    read -p "Press any key to continue . . ."
+
+    # Uncomment this line of needed
+    # read -p "Press Enter to continue . . ."
 
     # Cleanup
     unmount_directories
@@ -333,6 +354,11 @@ function main() {
 
     echo -e "${LGREEN}Done converting image.${NC}"
     echo -e "${LGREEN}The patched image is ${WHITE}${PATCHED_FILE}.xz${NC}"
+
+    # The code below didn't work
+    # echo -e '#!/bin/bash\nxdg-open "'$(dirname "$PATCHED_FILE")'"' > /tmp/open.sh
+    # runuser -l $(logname) -c 'bash /tmp/open.sh'
+    # rm -rf /tmp/open.sh
 }
 
 main $@

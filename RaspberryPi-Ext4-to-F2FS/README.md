@@ -16,7 +16,22 @@ This script will:
 
 ## Usage :
 
-1. Run `sudo bash rpif2fs.sh "/path/to/compress/live/image.{raw/img}.xz"`, where `/path/to/compress/live/image.{raw/img}.xz` is the path to the corresponding live image to be used. Please note the double tick ("") is used to allow using path containing spaces.
+1. Run the following command within current directory:
+
+   ```bash
+   sudo bash rpif2fs.sh
+   ```
+
+   and the file selection dialog will open to select the XZ-compressed image.
+
+   You can also pass the full image path as argument when calling `rpif2fs.sh`, for example:
+
+   ```bash
+   sudo bash rpif2fs.sh "/path/to/compress/live/image.{raw/img}.xz"
+   ```
+
+   Where `/path/to/compress/live/image.{raw/img}.xz` is the path to the corresponding live image to be used. Please note the double tick ("") is used to allow using path containing spaces.
+
 2. Follow the instruction on the screen.
 
 ## Tested Live Image :
