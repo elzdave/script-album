@@ -1,0 +1,376 @@
+#!/bin/bash
+#
+# =====================================================================
+# autochroot : Universal Automated Inline Cross-Architecture Chroot Utility
+# =====================================================================
+# Description       : Automatically probes, identifies, and mounts the true 
+#                     root filesystem (ext4/f2fs/xfs/btrfs) and its sub-partitions 
+#                     from any target disk. Dynamically detects the host package 
+#                     manager to automatically install missing cross-architecture 
+#                     dependencies. Implements rigid fail-safe checks to prevent 
+#                     accidental execution on host drives or partition nodes.
+# Style Standard    : Google Bash Scripting Guide & Defensive Engineering
+# Usage             : sudo autochroot [/dev/blkdevice]
+# Author            : David Eleazar, Gemini Collaborator
+# Year              : 2026
+# =====================================================================
+
+set -o errexit
+set -o nounset
+set -o pipefail
+
+# --- Constants & Configuration ---
+readonly TARGET_DIR="/mnt/universal_root"
+readonly PROBE_DIR="/mnt/chroot_probe"
+readonly VIRTUAL_MOUNTS=("/dev" "/dev/pts" "/proc" "/sys" "/run")
+readonly REQUIRED_CMDS=("mount" "umount" "chroot" "cp" "lsblk" "grep" "mkdir" "findmnt")
+
+# --- Global Variables ---
+TARGET_DISK=""
+ROOT_DEV=""
+
+# --- Helper Functions ---
+
+# Log informative messages to stdout.
+# Globals: None
+# Arguments: String to log
+log_info() {
+    echo -e "\033[1;32m[INFO]\033[0m $*"
+}
+
+# Log error messages to stderr.
+# Globals: None
+# Arguments: String to log
+log_error() {
+    echo -e "\033[1;31m[ERROR]\033[0m $*" >&2
+}
+
+# Print script usage instructions.
+# Globals: None
+# Arguments: None
+print_usage() {
+    echo "Usage: sudo autochroot <parent_disk_device>"
+    echo "Example:"
+    echo "  sudo autochroot /dev/sdb"
+    echo "  sudo autochroot /dev/mmcblk0"
+}
+
+# Ensure the script is executed with root privileges.
+# Globals: EUID
+# Arguments: None
+verify_root() {
+    if [[ "${EUID}" -ne 0 ]]; then
+        log_error "This script must be run as root (sudo)."
+        exit 1
+    fi
+}
+
+# Dynamically identify the host system's package manager.
+# Globals: None
+# Arguments: None
+# Outputs: String representing the detected package manager
+detect_package_manager() {
+    if command -v apt-get &> /dev/null; then
+        echo "apt"
+    elif command -v pacman &> /dev/null; then
+        echo "pacman"
+    elif command -v dnf &> /dev/null; then
+        echo "dnf"
+    elif command -v zypper &> /dev/null; then
+        echo "zypper"
+    else
+        echo "unknown"
+    fi
+}
+
+# Install required emulation packages using the host's native package manager.
+# Globals: None
+# Arguments: Package manager name string
+install_emulators() {
+    local pkg_manager="$1"
+    log_info "Missing cross-architecture emulators. Attempting auto-installation via ${pkg_manager}..."
+
+    case "${pkg_manager}" in
+        apt)
+            apt-get update -y
+            apt-get install -y qemu-user-static binfmt-support
+            ;;
+        pacman)
+            pacman -S --noconfirm qemu-user-static binfmt-support
+            ;;
+        dnf)
+            dnf install -y qemu-user-static
+            ;;
+        zypper)
+            zypper install -y qemu-user-static
+            ;;
+        *)
+            log_error "Unsupported package manager. Please manually install qemu-user-static."
+            exit 1
+            ;;
+    esac
+}
+
+# Verify CLI dependencies and dynamically resolve missing cross-architecture emulators.
+# Globals: REQUIRED_CMDS
+# Arguments: None
+handle_dependencies() {
+    local cmd pkg_manager
+    for cmd in "${REQUIRED_CMDS[@]}"; do
+        if ! command -v "${cmd}" &> /dev/null; then
+            log_error "Required core command '${cmd}' is missing from host system."
+            exit 1
+        fi
+    done
+
+    if [[ ! -f "/usr/bin/qemu-arm-static" && ! -f "/usr/bin/qemu-aarch64-static" ]]; then
+        pkg_manager=$(detect_package_manager)
+        install_emulators "${pkg_manager}"
+    fi
+}
+
+# Validate input arguments from command-line.
+# Globals: None
+# Arguments: Arguments array passed to script
+validate_input() {
+    if [[ $# -lt 1 ]]; then
+        print_usage
+        exit 1
+    fi
+}
+
+# Initialize and assign input parameters to state variables.
+# Globals: TARGET_DISK
+# Arguments: First command-line argument
+initialize_environment() {
+    TARGET_DISK="$1"
+    if [[ ! -b "${TARGET_DISK}" ]]; then
+        log_error "Device '${TARGET_DISK}' is not a valid block device."
+        exit 1
+    fi
+}
+
+# Enforce strict fail-safe parameters preventing execution on host root or partition targets.
+# Globals: TARGET_DISK
+# Arguments: None
+enforce_failsafes() {
+    local dev_type host_root_dev host_root_disk
+    
+    # Fail-safe 1: Block direct partition mapping arguments
+    dev_type=$(lsblk -d -n -o TYPE "${TARGET_DISK}")
+    if [[ "${dev_type}" == "part" ]]; then
+        log_error "Safety violation: '${TARGET_DISK}' is a partition node."
+        log_error "You must supply the top-level parent block device (e.g., /dev/sdb)."
+        exit 1
+    fi
+
+    # Fail-safe 2: Intercept and block target mappings matching active host system disk
+    host_root_dev=$(findmnt -n -o SOURCE /)
+    
+    # Defensive parsing: Strip Btrfs subvolume bracket suffixes (e.g., [/root]) if present
+    host_root_dev="${host_root_dev%%\[*}"
+    
+    host_root_disk=$(lsblk -n -o PKNAME "${host_root_dev}" | head -n 1)
+    
+    if [[ -z "${host_root_disk}" ]]; then
+        host_root_disk=$(basename "${host_root_dev}")
+    fi
+
+    if [[ "${TARGET_DISK}" == "/dev/${host_root_disk}" || "${TARGET_DISK}" == "${host_root_dev}" ]]; then
+        log_error "CRITICAL SAFETY VIOLATION: '${TARGET_DISK}' is the active host operating system drive!"
+        log_error "Execution terminated immediately to prevent system lockup and filesystem corruption."
+        exit 1
+    fi
+}
+
+# Safely unmount all virtual and physical filesystems in reverse hierarchical order.
+# Globals: TARGET_DIR, VIRTUAL_MOUNTS
+# Arguments: None
+umount_chroot() {
+    trap - EXIT SIGINT SIGTERM SIGHUP
+    
+    echo ""
+    log_info "Cleaning up chroot mounts safely..."
+
+    local i
+    for ((i=${#VIRTUAL_MOUNTS[@]}-1; i>=0; i--)); do
+        local dir="${VIRTUAL_MOUNTS[i]}"
+        if mountpoint -q "${TARGET_DIR}${dir}"; then
+            umount -l "${TARGET_DIR}${dir}" || log_error "Failed to unmount ${TARGET_DIR}${dir}"
+        fi
+    done
+
+    if mountpoint -q "${TARGET_DIR}/boot/efi"; then
+        umount "${TARGET_DIR}/boot/efi" || log_error "Failed to unmount /boot/efi"
+    fi
+
+    if mountpoint -q "${TARGET_DIR}/boot"; then
+        umount "${TARGET_DIR}/boot" || log_error "Failed to unmount /boot"
+    fi
+
+    if mountpoint -q "${TARGET_DIR}"; then
+        umount "${TARGET_DIR}" || log_error "Failed to unmount rootfs"
+    fi
+
+    if [[ -d "${PROBE_DIR}" ]]; then
+        rmdir "${PROBE_DIR}" 2>/dev/null || true
+    fi
+
+    log_info "Cleanup complete. Safe to manage disk."
+}
+
+# --- Core Logic ---
+
+# Probe the block device to empirically find and mount the true Linux root partition.
+# Globals: TARGET_DISK, ROOT_DEV, TARGET_DIR, PROBE_DIR
+# Arguments: None
+probe_and_mount_root() {
+    log_info "Probing partitions on ${TARGET_DISK} for valid Linux root signatures..."
+    mkdir -p "${PROBE_DIR}"
+    mkdir -p "${TARGET_DIR}"
+
+    local part partitions
+    mapfile -t partitions < <(lsblk -l -n -o NAME -p "${TARGET_DISK}" | grep -v "^${TARGET_DISK}$")
+
+    for part in "${partitions[@]}"; do
+        if mount -o ro "${part}" "${PROBE_DIR}" 2>/dev/null; then
+            if [[ -d "${PROBE_DIR}/etc" && -d "${PROBE_DIR}/bin" ]]; then
+                ROOT_DEV="${part}"
+                umount "${PROBE_DIR}"
+                break
+            fi
+            umount "${PROBE_DIR}"
+        fi
+    done
+
+    if [[ -z "${ROOT_DEV}" ]]; then
+        log_error "No valid Linux root partition detected on ${TARGET_DISK}."
+        rmdir "${PROBE_DIR}" "${TARGET_DIR}" 2>/dev/null || true
+        exit 1
+    fi
+
+    log_info "Identified True Root Partition: ${ROOT_DEV}"
+    mount "${ROOT_DEV}" "${TARGET_DIR}"
+    rmdir "${PROBE_DIR}" 2>/dev/null || true
+}
+
+# Scan and mount secondary subsystems mapping dependencies accurately via internal fstab signatures.
+# Globals: TARGET_DISK, ROOT_DEV, TARGET_DIR
+# Arguments: None
+probe_and_mount_subsystems() {
+    log_info "Analyzing secondary partitions for hierarchical sub-mount structures..."
+    
+    local part partitions
+    mapfile -t partitions < <(lsblk -l -n -o NAME -p "${TARGET_DISK}" | grep -v "^${TARGET_DISK}$")
+
+    local boot_part=""
+    local efi_part=""
+
+    for part in "${partitions[@]}"; do
+        [[ "${part}" == "${ROOT_DEV}" ]] && continue
+
+        local fstype uuid partuuid
+        fstype=$(lsblk -d -n -o FSTYPE "${part}")
+        uuid=$(lsblk -d -n -o UUID "${part}")
+        partuuid=$(lsblk -d -n -o PARTUUID "${part}")
+
+        if [[ -n "${uuid}" ]] && grep -q "UUID=${uuid}[[:space:]]/boot[[:space:]]" "${TARGET_DIR}/etc/fstab" 2>/dev/null; then
+            boot_part="${part}"
+        elif [[ -n "${partuuid}" ]] && grep -q "PARTUUID=${partuuid}[[:space:]]/boot[[:space:]]" "${TARGET_DIR}/etc/fstab" 2>/dev/null; then
+            boot_part="${part}"
+        elif grep -q "${part}[[:space:]]/boot[[:space:]]" "${TARGET_DIR}/etc/fstab" 2>/dev/null; then
+            boot_part="${part}"
+        fi
+
+        if [[ -n "${uuid}" ]] && grep -q "UUID=${uuid}[[:space:]]/boot/efi[[:space:]]" "${TARGET_DIR}/etc/fstab" 2>/dev/null; then
+            efi_part="${part}"
+        elif [[ -n "${partuuid}" ]] && grep -q "PARTUUID=${partuuid}[[:space:]]/boot/efi[[:space:]]" "${TARGET_DIR}/etc/fstab" 2>/dev/null; then
+            efi_part="${part}"
+        elif grep -q "${part}[[:space:]]/boot/efi[[:space:]]" "${TARGET_DIR}/etc/fstab" 2>/dev/null; then
+            efi_part="${part}"
+        fi
+
+        if [[ -z "${boot_part}" && "${fstype}" == "vfat" && ! -d "${TARGET_DIR}/boot/efi" ]]; then
+            boot_part="${part}"
+        fi
+    done
+
+    if [[ -n "${boot_part}" ]]; then
+        log_info "Mounting secondary Linux Boot partition (${boot_part}) to /boot..."
+        mount "${boot_part}" "${TARGET_DIR}/boot" 2>/dev/null || true
+    fi
+
+    if [[ -n "${efi_part}" ]]; then
+        log_info "Mounting EFI configuration partition (${efi_part}) to /boot/efi..."
+        mount "${efi_part}" "${TARGET_DIR}/boot/efi" 2>/dev/null || true
+    fi
+}
+
+# Bind system virtual filesystems required for runtime execution.
+# Globals: TARGET_DIR, VIRTUAL_MOUNTS
+# Arguments: None
+bind_kernel_filesystems() {
+    log_info "Binding systemic virtual kernel filesystems..."
+    local dir
+    for dir in "${VIRTUAL_MOUNTS[@]}"; do
+        mount --bind "${dir}" "${TARGET_DIR}${dir}"
+    done
+}
+
+# Copy host DNS configurations dereferencing symlinks and embed QEMU cross-compilers inside root target.
+# Globals: TARGET_DIR
+# Arguments: None
+sync_host_configs() {
+    log_info "Synchronizing network contexts and architecture cross-emulators..."
+    if [[ -f "/etc/resolv.conf" ]]; then
+        cp -L /etc/resolv.conf "${TARGET_DIR}/etc/resolv.conf"
+    fi
+
+    if [[ -f "/usr/bin/qemu-arm-static" ]]; then
+        cp /usr/bin/qemu-arm-static "${TARGET_DIR}/usr/bin/"
+    fi
+    if [[ -f "/usr/bin/qemu-aarch64-static" ]]; then
+        cp /usr/bin/qemu-aarch64-static "${TARGET_DIR}/usr/bin/"
+    fi
+}
+
+# Register signal interception handlers and hand over TTY control to chroot environment.
+# Globals: TARGET_DIR
+# Arguments: None
+execute_chroot() {
+    trap umount_chroot EXIT SIGINT SIGTERM SIGHUP
+
+    log_info "Spawning inline universal chroot environment..."
+    echo "========================================================"
+    echo "   LOGGED INTO UNIVERSAL TARGET SYSTEM CHROOT SHELL     "
+    echo "   Type 'exit' or press Ctrl+D when finished.          "
+    echo "========================================================"
+    
+    if [[ -x "${TARGET_DIR}/bin/bash" ]]; then
+        chroot "${TARGET_DIR}" /bin/bash
+    else
+        log_info "Bash not found inside target. Falling back to /bin/sh..."
+        chroot "${TARGET_DIR}" /bin/sh
+    fi
+
+    echo "========================================================"
+    log_info "Terminated active chroot shell session safely..."
+}
+
+# Main function orchestration wrapper.
+# Globals: None
+# Arguments: Command-line arguments array
+main() {
+    verify_root
+    handle_dependencies
+    validate_input "$@"
+    initialize_environment "$1"
+    enforce_failsafes
+    probe_and_mount_root
+    probe_and_mount_subsystems
+    bind_kernel_filesystems
+    sync_host_configs
+    execute_chroot
+}
+
+main "$@"

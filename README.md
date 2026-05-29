@@ -11,6 +11,7 @@
 5. [Aapanel Nginx installer/uninstaller](Nginx-Aapanel-Install)
 6. [AlmaLinux Cloud Init generator](AlmaLinux-Cloud-Init-Generator)
 7. [RaspberryPi Ext4 to F2FS](RaspberryPi-Ext4-to-F2FS)
+8. [Autochroot: Universal Automated Inline Cross-Architecture Chroot Utility](Autochroot-Universal-Automated-Inline-Cross-Architecture-Chroot-Utility)
 
 ### Contribution
 
