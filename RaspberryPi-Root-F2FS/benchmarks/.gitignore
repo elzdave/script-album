@@ -1,0 +1,16 @@
+# ==============================================================================
+# Benchmark Directory Configuration
+# ==============================================================================
+
+# Ignore all files and generated artifacts in this directory by default
+*
+
+# ==============================================================================
+# Whitelist / Exceptions
+# ==============================================================================
+# Ensure this configuration file itself is tracked
+!.gitignore
+
+# Prevent benchmark execution scripts from being ignored
+# (Feel free to add or remove extensions based on your project's tech stack)
+!*.sh

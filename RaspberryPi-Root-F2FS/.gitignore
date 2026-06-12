@@ -1,0 +1,22 @@
+# ==============================================================================
+# Logs, Backups, and Benchmark Artifacts
+# ==============================================================================
+*.log
+*.bak
+logs
+old
+benchmark_report.txt
+benchmark_results/
+
+# ==============================================================================
+# Local Environment Overrides
+# ==============================================================================
+# Ignore local-only execution scripts (*.own). 
+# These are typically customized copies of standard shell scripts (e.g., runner.sh -> runner.sh.own).
+*.own
+
+# ==============================================================================
+# Whitelist / Exceptions
+# ==============================================================================
+# Ensure the repository configuration itself is always tracked
+!.gitignore
