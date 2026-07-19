@@ -1,0 +1,24 @@
+# ==============================================================================
+# Generated SSH keys, generated sensitive user data, etc
+# ==============================================================================
+ssh/*
+user-data*
+meta-data*
+network-config*
+old
+*reboot
+
+# ==============================================================================
+# Local Environment Overrides
+# ==============================================================================
+# Ignore local-only execution scripts (*.own). 
+# These are typically customized copies of standard shell scripts (e.g., runner.sh -> runner.sh.own).
+*.own
+
+# ==============================================================================
+# Whitelist / Exceptions
+# ==============================================================================
+# Ensure the repository configuration itself is always tracked
+!.gitignore
+!ssh/README.md
+!stubs/*

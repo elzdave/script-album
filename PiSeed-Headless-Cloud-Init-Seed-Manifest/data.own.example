@@ -1,0 +1,55 @@
+# =====================================================================
+# data.own.example : Reference Profile for Hands-Free Deployments
+# =====================================================================
+# Instructions: Copy this file to 'data.own' and fill in your values.
+#               The profile 'data.own' is automatically read by the
+#               piseed.sh script if present in the same directory.
+# Security Note: NEVER commit your active 'data.own' file to Git!
+# =====================================================================
+
+# --- Core System User Authentication Settings ---
+# USERNAME : System user account name to generate on the target host (e.g., pi, admin).
+USERNAME=pi
+
+# PASSWORD : Raw password string. piseed.sh will auto-convert this into a secure SHA-512 hash context.
+PASSWORD=mysecurepassword123
+
+# --- OpenSSH Daemon Infrastructure Parameters ---
+# SSH_PASSWORD_LOGIN : Controls password authentication over SSH. Options: true | false.
+#                      If false, connection is strictly bound to SSH key matching.
+SSH_PASSWORD_LOGIN=false
+
+# SSH_PORT : Custom listening port for hardening target access paths.
+#            Options: Any valid integer (1025-65535) | default (keeps port 22).
+SSH_PORT=1234
+
+# --- Networking Identity Configurations ---
+# HOSTNAME : Machine local hostname mapping context (without trailing .local).
+#            Defaults to 'raspberrypi' if left empty or omitted.
+HOSTNAME=raspberrypi
+
+# --- Hardware Wireless Interface Provisioning Track ---
+# WIFI_ENABLE : Directs early staging network bindings. Options: true | false.
+WIFI_ENABLE=true
+
+# WIFI_SSID : Service Set Identifier of your local access point. Spaces are fully supported.
+WIFI_SSID=My Home Network SSID
+
+# WIFI_PASSWORD : Plaintext passphrase key for the local wireless connection access point.
+WIFI_PASSWORD=mysecretwifipassword
+
+# WIFI_REG_DOMAIN : Two-letter ISO country code for wireless regulatory domain boundaries (e.g., ID, US, SG).
+WIFI_REG_DOMAIN=GB
+
+# --- Advanced Interface Virtualization Controls ---
+# WIFI_STATIC_MAC_ENABLE : Enables spoofed or persistent hardware addressing schemes. Options: true | false.
+WIFI_STATIC_MAC_ENABLE=false
+
+# WIFI_MAC : Target cloned hardware address tokens. Format: XX:XX:XX:XX:XX:XX.
+#            Only evaluated if WIFI_STATIC_MAC_ENABLE is explicitly set to true.
+WIFI_MAC=00:11:22:33:44:55
+
+# --- Finalization Lifecycle Parameters ---
+# ENABLE_REBOOT : Force hardware reset to evaluate security policies on initial run.
+#                 Options: true (highly recommended for SELinux relabeling) | false.
+ENABLE_REBOOT=true

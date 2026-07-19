@@ -9,8 +9,8 @@
 3. [Android Automatic Wireless Debugging](Android-Automatic-Wireless-Debugging)
 4. [Ngrok Linux Service installer/uninstaller](Ngrok-Linux-Service)
 5. [Aapanel Nginx installer/uninstaller](Nginx-Aapanel-Install)
-6. [AlmaLinux Cloud Init generator](AlmaLinux-Cloud-Init-Generator)
-7. [Raspberry Pi Live Image Root to F2FS Converter](RaspberryPi-Root-F2FS)
+6. [Raspberry Pi Live Image Root to F2FS Converter](RaspberryPi-Root-F2FS)
+7. [PiSeed: Headless Cloud-Init Seed Manifest](PiSeed-Headless-Cloud-Init-Seed-Manifest)
 8. [Autochroot: Universal Automated Inline Cross-Architecture Chroot Utility](Autochroot-Chroot-Utility)
 
 ### Contribution
